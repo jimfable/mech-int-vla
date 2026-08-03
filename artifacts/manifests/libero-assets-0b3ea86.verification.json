@@ -1,0 +1,13 @@
+{
+  "manifest_path": "/tmp/libero-assets-0b3ea86.manifest.tsv",
+  "manifest_sha256": "7abae99d7c844189e89376b4b5f80b4bb1dedae9e0390845567a452712b74492",
+  "missing": [],
+  "repo_id": "lerobot/libero-assets",
+  "repository_file_count": 586,
+  "repository_total_bytes": 422320936,
+  "revision": "0b3ea86be5fe169d0fd036ae63d1070ec09e90f6",
+  "snapshot_path": "/tmp/libero-assets-0b3ea86",
+  "unexpected_repo_files": [],
+  "verification": "Each LFS file SHA-256 equals its revision LFS OID; each non-LFS file Git blob SHA-1 equals its revision OID.",
+  "verification_errors": []
+}

@@ -20,6 +20,7 @@ from mech_int_vla.libero_runtime import (
     check_validity,
     deterministic_phase,
     extract_policy_state,
+    resolve_primary_object_name,
     restore_simulator_snapshot,
     temporary_condition,
 )
@@ -96,7 +97,7 @@ class FakeBackend:
         self.objects_dict = {
             "book_1": types.SimpleNamespace(
                 name="book_1",
-                category_name="book",
+                category_name="black_book",
                 joints=["book_free"],
                 contact_geoms=["book_geom"],
             )
@@ -197,6 +198,24 @@ def test_policy_state_is_exactly_eight_values() -> None:
     state = extract_policy_state(raw)
     assert state.shape == (8,)
     assert np.allclose(state, [0, 0, 1, 0, 0, 0, 0.02, 0.02])
+
+
+@pytest.mark.parametrize(
+    ("requested", "runtime_key"),
+    (("black_book", "black_book_1"), ("white_yellow_mug", "white_yellow_mug_1")),
+)
+def test_pinned_primary_object_categories_resolve_real_bddl_keys(
+    requested: str, runtime_key: str
+) -> None:
+    backend = types.SimpleNamespace(
+        objects_dict={
+            runtime_key: types.SimpleNamespace(
+                name=runtime_key,
+                category_name=requested,
+            )
+        }
+    )
+    assert resolve_primary_object_name(backend, requested) == runtime_key
 
 
 def test_phase_precedence_and_two_cm_transport_threshold() -> None:
@@ -316,6 +335,8 @@ def test_manual_backend_step_preserves_terminal_state() -> None:
     with pytest.raises(LiberoRuntimeError, match="terminal"):
         runtime.step(np.zeros(7, dtype=np.float32))
     assert np.array_equal(capture_simulator_snapshot(wrapper).state, terminal_state)
+    with pytest.raises(LiberoRuntimeError, match="single-use"):
+        runtime.reset(seed=101000, condition=ConditionSpec("iid", "iid"))
 
 
 def test_exact_raw_libero_constructor_is_lazy(monkeypatch) -> None:

@@ -71,6 +71,33 @@ left to environment resolution.
   preregistered late-expert depth, and will not be tuned.
 - **Implementing commit:** `aa863a6177a103ccb67d56e219367a0dc8c1ff03`
 
+### 2026-08-03 — Correct primary-object runtime category aliases
+
+- **Prior protocol commit:** `3831416c32d2902ecdf45776153c9330f103e705`
+- **Technical reason:** An outcome-free audit of the pinned BDDL declarations found
+  that task 5 exposes runtime object `black_book_1` with category `black_book`, not
+  the generic configured alias `book`; task 9 exposes `white_yellow_mug_1` with
+  category `white_yellow_mug`, not `yellow_and_white_mug`. The fail-closed resolver
+  would therefore reject both tasks before any episode could reset. Task 2's
+  `moka_pot` category is already exact.
+- **Exact change:** Replace only the two `primary_object` lookup strings with their
+  pinned LIBERO category names: `book` becomes `black_book`, and
+  `yellow_and_white_mug` becomes `white_yellow_mug`. Also make each raw episode
+  instance single-use because LeRobot advances its internal init-state index after
+  reset; every condition must construct a fresh runtime to preserve paired init
+  states. Task semantics, rank/order, perturbations, seeds, sample sizes, model
+  features, hypotheses, and metrics are unchanged.
+- **Affected hypotheses/metrics:** None; these are exact simulator identifiers and a
+  pairing invariant.
+- **Outcome visibility:** No policy forward, action, successful simulator
+  construction/reset, observation, success value, or Discovery/Calibration/Test
+  outcome had been run or viewed. The prior simulator attempt failed on a missing
+  XML asset before initial-state loading.
+- **Bias risk and mitigation:** Negligible. Values are forced by immutable BDDL
+  declarations, tested against their real key pattern, and no semantic choice or
+  outcome was available.
+- **Implementing commit:** `PENDING_THIS_COMMIT`
+
 ### 2026-08-03 — Correct stale checkpoint state-shape metadata
 
 - **Prior protocol commit:** `247a22c50a649973440f9172c44202d13c27d8fc`

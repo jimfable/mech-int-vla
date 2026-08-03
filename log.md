@@ -215,3 +215,85 @@ that experiments, negative results, decisions, and confidence can be audited.
   retained in the task transcript pending structured capture.
 - **Compute / cost:** one full model construction/weight load, zero forward passes;
   one failed simulator construction, zero simulator control steps.
+
+### 2026-08-03 10:52 CEST — SETUP-006: verify assets, audit identifiers, pause idle GPU
+
+- **Stage:** setup
+- **Question:** Are all remaining LIBERO inputs locally verifiable, are selected task
+  identifiers executable, and can idle rental cost be reduced without risking data?
+- **Pre-state / commit:** `3831416c32d2902ecdf45776153c9330f103e705`;
+  instance 46677323 running idle at the dashboard's `$0.344/hr` compute/storage rate.
+- **Method:** Downloaded exact asset revision `0b3ea86...` on the laptop; verified
+  each ordinary file against its Git blob SHA-1 and each LFS file against its
+  SHA-256 OID; created and integrity-tested a zstd transfer archive. Audited the
+  three pinned BDDL files/init-state tensors and LeRobot reset behavior without
+  constructing a policy or simulator. Before pausing, checked process/GPU tables,
+  synchronized disk writes, required a clean remote worktree, and rehashed the full
+  checkpoint plus every transferred code/snapshot archive against off-instance
+  copies. Used only Vast's Stop action, never Destroy.
+- **Inputs and controls:** 586 asset files, 422,320,936 repository bytes; three
+  selected BDDL tasks and their 50 pinned init states each. No policy forward,
+  successful simulator construction/reset, observation, action, label, or outcome.
+- **Results:** Every asset verified with no missing/unexpected files. Transfer archive
+  size is 237,978,828 bytes with SHA-256
+  `ad0626590c94ca126312ed52728d19d594a1f46e23c4185b6b6958cf349aa940`.
+  Tasks 2/5/9 expose 50 finite init states with shapes `(50,45)`, `(50,47)`, and
+  `(50,47)`. Source audit found two exact category mismatches: `black_book` and
+  `white_yellow_mug` are required. It also found LeRobot increments its init-state
+  index after reset, requiring one raw runtime per paired cell. With all relevant
+  jobs gone and artifacts secured, Vast confirmed the instance as `Inactive` and
+  displayed stopped storage cost `$0.037/hr` / `$0.89/day` versus `$0.344/hr`
+  running, a 9.3-fold reduction. Vast warns restart depends on GPU availability.
+- **Interpretation:** The assets and identifier corrections can be frozen without
+  outcome leakage. Pausing preserves the 19 GB remote environment while avoiding
+  idle compute charges; the exact saving is larger than the user's rough one-eighth
+  estimate, though storage billing continues.
+- **Confidence:** high; content-addressed file checks, immutable source/BDDL data,
+  live process inspection, and Vast's own confirmation/dialog supplied the values.
+- **Decision:** Commit the exact aliases/single-use invariant and tracked manifests.
+  Keep the instance stopped while the transfer path and rollout runner are prepared;
+  resume only when a concrete download or experiment is ready.
+- **Next step:** Publish the corrected runtime, transfer the verified asset archive
+  through a fast CDN path, resume the instance, and repeat the identical first IID
+  Discovery reset.
+- **Artifacts:** `artifacts/manifests/libero-assets-0b3ea86.*`, local
+  `/tmp/libero-assets-0b3ea86.tar.zst`, `AMENDMENTS.md`, `environment.lock`.
+- **Compute / cost:** GPU paused after approximately 2 h 26 m instance age; ongoing
+  stopped storage rate `$0.037/hr`, no GPU/model/simulator work in this entry.
+
+### 2026-08-03 10:56 CEST — SETUP-007: atomic deterministic rollout executor
+
+- **Stage:** setup
+- **Question:** Can one manifested episode be executed and recorded without wrapper
+  autoresets, condition reuse, hidden open-loop actions, or partial artifacts?
+- **Pre-state / commit:** `3831416c32d2902ecdf45776153c9330f103e705`;
+  GPU inactive and no real model/simulator execution during implementation.
+- **Method:** Composed the strict policy runtime, single-use raw LIBERO episode, and
+  activation instrumentation in a narrow one-episode executor. Built synthetic
+  success, horizon-truncation, invalid-reset, exception, protected-path, reuse, and
+  contract tests. Reviewed the complete artifact schema and reran repository-wide
+  tests/lint/format/compile checks.
+- **Inputs and controls:** Synthetic 7-D actions, 8-D states, terminal frames, and
+  five four-dimensional mock candidate activations. The executor requires the exact
+  manifested policy/task/condition, fresh raw runtime, `n_action_steps=1`, ten
+  denoising steps, one prefix plus ten internal calls per action, and unpatched
+  activations.
+- **Results:** The executor replans at every environment step, captures exactly the
+  five frozen candidates, rejects an invalid post-settle reset before inference,
+  preserves terminal state, and records action/reward/pose/state/contact/grasp/phase/
+  predicate/scalar arrays plus revision/seeds/outcome metadata. Artifacts stage in a
+  temporary directory, fsync data and metadata, publish by atomic rename, refuse
+  overwrites, and cannot target config/lock paths. All 64 tests and all static checks
+  pass.
+- **Interpretation:** Discovery rollouts now have a fail-closed, crash-safe execution
+  path. The remaining uncertainty is integration with a real processed observation
+  and action, which will be checked on the first IID cell after asset staging.
+- **Confidence:** high for tested control flow, capture cardinality, terminal and
+  atomic-publication invariants; medium for real policy processor compatibility until
+  the first action pass.
+- **Decision:** Use a fresh runtime and artifact directory for every manifest cell;
+  never retry a failed reset in the same wrapper; never overwrite a completed cell.
+- **Next step:** Commit/push, stage the verified asset archive, resume the GPU, run the
+  same first IID reset, then one complete Discovery episode if reset validity passes.
+- **Artifacts:** `src/mech_int_vla/rollout.py`, `tests/test_rollout.py`.
+- **Compute / cost:** laptop-only synthetic tests while the GPU remained inactive.

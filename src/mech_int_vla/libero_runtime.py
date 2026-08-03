@@ -716,6 +716,7 @@ class RawLiberoEpisode:
         self.post_settle_start_position: np.ndarray | None = None
         self.control_step = 0
         self.terminal = False
+        self._has_reset = False
 
     @classmethod
     def create(
@@ -790,6 +791,14 @@ class RawLiberoEpisode:
         )
 
     def reset(self, *, seed: int, condition: ConditionSpec) -> ResetResult:
+        if self._has_reset:
+            raise LiberoRuntimeError(
+                "RawLiberoEpisode is single-use; construct one runtime per condition"
+            )
+        # LeRobot advances its internal init-state index on every reset. Mark this
+        # instance consumed before touching the wrapper so even a failed reset
+        # cannot silently shift a later paired condition to the next init state.
+        self._has_reset = True
         seed_runtime(seed)
         self.wrapper.reset(seed=seed)
         backend = _backend(self.wrapper)

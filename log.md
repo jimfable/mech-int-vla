@@ -1129,6 +1129,22 @@ that experiments, negative results, decisions, and confidence can be audited.
   this is ordinary protocol execution, not a new rollout path. Preserve the
   immutable tag and do not inspect or instantiate Locked Test.
 
+### 2026-08-03 21:53 CEST — CALIBRATION-RUNNING-004: resumed job still advancing
+
+- **Read-only recheck:** Vast reports instance 46677323 `running` at the known
+  SSH endpoints. The remote Calibration checkout remains clean at
+  `18d64941bc8c899b06306fbec21d1c8d2c08f2ea`, exactly matching
+  `prereg-locked-v1`; no old Discovery process or Locked Test process exists.
+- **Progress:** The resumable Supervisor has now published and independently
+  validated six Calibration cells in exact manifest order. Cells 4 and 5 are
+  complete: cell 4 succeeded in 179 steps (metadata `7a7027b6…`, trajectory
+  `58d788b9…`); cell 5 is a valid 520-step truncation (metadata `0c3f8c0a…`,
+  trajectory `93bbf841…`). Cell 6 is the sole active child; no duplicate or
+  overwrite path is present.
+- **Decision:** Leave the concrete GPU job running under Supervisor and keep
+  monitoring. No stop, recycle, terminate, or Locked Test access is permitted
+  at this stage.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

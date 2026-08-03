@@ -386,4 +386,4 @@ left to environment resolution.
   named and distinguishable from physical support contact; all thresholds,
   precedence, onset/confirmation rules, bounds cohort, and early-termination failure
   behavior are fixed before data and retained in a content-addressed freeze.
-- **Implementing commit:** `PENDING_FUTURE_COMMIT`
+- **Implementing commit:** `f22714a579a82639b1b7ed650b548f40ccbdc69b`

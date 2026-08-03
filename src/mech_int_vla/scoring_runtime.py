@@ -27,7 +27,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .artifacts import RolloutArtifact
-from .config import ConditionSpec
+from .config import ConditionSpec, ProtocolConfig
 from .scoring import (
     ACTION_DIMENSION,
     CallCost,
@@ -45,7 +45,7 @@ from .scoring import (
 if TYPE_CHECKING:
     from .instrumentation import SmolVLAInstrumentation
     from .libero_runtime import RawLiberoEpisode
-    from .probes import ProbeArtifact
+    from .probe_artifacts import BoundProbeArtifact
     from .snapshots import LoadedPolicyRuntime
 
 PHASES = ("pregrasp", "grasped", "transport", "placed")
@@ -450,11 +450,12 @@ class SmolVLAScoringAdapter:
         episode: RawLiberoEpisode,
         policy_runtime: LoadedPolicyRuntime,
         artifact: RolloutArtifact,
-        probe: ProbeArtifact,
+        bound_probe: BoundProbeArtifact,
         instrumentation: SmolVLAInstrumentation,
         *,
         reset_seed: int,
         original_condition: ConditionSpec,
+        protocol: ProtocolConfig,
         repo_root: str | Path,
         timer_backend: Any | None = None,
     ) -> None:
@@ -462,11 +463,14 @@ class SmolVLAScoringAdapter:
         self.policy_runtime = policy_runtime
         self.artifact = artifact
         self.factual = factual_replay_from_artifact(artifact)
-        self.probe = probe
+        self.bound_probe = bound_probe
         self.instrumentation = instrumentation
-        self.reset_seed = int(reset_seed)
+        if type(reset_seed) is not int or reset_seed < 0:
+            raise ScoringRuntimeError("reset_seed must be a nonnegative integer")
+        self.reset_seed = reset_seed
         self.original_condition = original_condition
-        self.expected_content_links = self._content_links(repo_root)
+        self._validate_bound_probe(protocol, repo_root)
+        self.expected_content_links = self._content_links(repo_root, protocol)
         self._active_transform: ScoringTransform | None = None
         self._original_activation_by_noise: dict[int, Any] = {}
         self._peak_baseline: int | None = None
@@ -475,7 +479,9 @@ class SmolVLAScoringAdapter:
         self.device = self._policy_device(torch)
         self.timer = timer_backend or _DefaultTimerBackend(self.device, torch)
 
-    def _content_links(self, repo_root: str | Path) -> ContentLinks:
+    def _content_links(
+        self, repo_root: str | Path, protocol: ProtocolConfig
+    ) -> ContentLinks:
         from .failure_events import ArtifactIdentity
         from .provenance import content_links_for
 
@@ -485,11 +491,32 @@ class SmolVLAScoringAdapter:
             trajectory_sha256=self.artifact.hashes.trajectory_sha256,
         )
         try:
-            return content_links_for(identity, self.probe, repo_root)
+            return content_links_for(
+                identity, self.bound_probe, repo_root, protocol=protocol
+            )
         except ValueError as exc:
             raise ScoringRuntimeError(
                 f"could not bind score links to repository bytes: {exc}"
             ) from exc
+
+    def _validate_bound_probe(
+        self, protocol: ProtocolConfig, repo_root: str | Path
+    ) -> None:
+        from .probe_artifacts import (
+            BoundProbeArtifact,
+            BoundProbeError,
+            validate_bound_probe_artifact,
+        )
+
+        if not isinstance(self.bound_probe, BoundProbeArtifact):
+            raise ScoringRuntimeError("probe must be a validated BoundProbeArtifact")
+        try:
+            validate_bound_probe_artifact(
+                self.bound_probe, protocol=protocol, repo_root=repo_root
+            )
+        except BoundProbeError as exc:
+            raise ScoringRuntimeError(f"bound probe is invalid: {exc}") from exc
+        self.probe = self.bound_probe.probe
 
     def _validate_runtime(self) -> None:
         episode = self.episode
@@ -599,6 +626,38 @@ class SmolVLAScoringAdapter:
         ):
             raise ScoringRuntimeError(
                 "loaded model input lock differs from the artifact"
+            )
+        try:
+            probe_source = self.bound_probe.rollout.source
+            probe_task = probe_source.task
+            probe_task_identity = (
+                probe_task.suite,
+                probe_task.task_id,
+                probe_task.rank,
+                probe_task.language,
+                probe_task.primary_object,
+                probe_task.planar_symmetry_order,
+            )
+        except AttributeError as exc:
+            raise ScoringRuntimeError(
+                "bound probe lacks audited Calibration source identity"
+            ) from exc
+        raw_task_identity = (
+            task["suite"],
+            task["task_id"],
+            task["rank"],
+            task["language"],
+            task["primary_object"],
+            task["planar_symmetry_order"],
+        )
+        if probe_task_identity != raw_task_identity:
+            raise ScoringRuntimeError("bound probe task differs from the raw artifact")
+        if (
+            probe_source.policy_revision != manifested["policy_revision"]
+            or probe_source.base_vlm_revision != model_metadata["base_vlm_revision"]
+        ):
+            raise ScoringRuntimeError(
+                "bound probe policy/base VLM differs from the raw artifact"
             )
         if tuple(getattr(self.policy_runtime, "original_state_shape", ())) != (
             6,
@@ -820,7 +879,7 @@ class SmolVLAScoringAdapter:
             raise ScoringRuntimeError("score raw metadata hash link is stale")
         if links.raw_trajectory_sha256 != self.artifact.hashes.trajectory_sha256:
             raise ScoringRuntimeError("score raw trajectory hash link is stale")
-        if links.probe_sha256 != self.probe.sha256():
+        if links.probe_sha256 != self.bound_probe.sha256:
             raise ScoringRuntimeError("score probe hash link is stale")
         if links.config_sha256 != self.expected_content_links.config_sha256:
             raise ScoringRuntimeError("score config hash link is stale")

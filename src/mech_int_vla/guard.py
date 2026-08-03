@@ -17,6 +17,7 @@ from .config import (
     CalibrationGuardConfig,
     CalibrationSelectionConfig,
     LockedTestGuardConfig,
+    ProtocolConfig,
     PredictorCandidateConfig,
     TaskSpec,
 )
@@ -58,6 +59,27 @@ _LOCKED_FIELDS = frozenset(
         "calibration_metrics",
     }
 )
+_REALITY_GATE_LOCK_PROTOCOL = "preregistered-reality-gate-lock-v1"
+_REALITY_GATE_LOCK_FIELDS = frozenset(
+    {
+        "schema_version",
+        "protocol",
+        "policy_revision",
+        "code_commit",
+        "selected_task",
+        "selected_variable",
+        "reality_gate_lock_receipt_sha256",
+        "reality_gate_lock_receipt",
+        "reality_gate_receipt_sha256",
+        "reality_gate_receipt",
+        "orientation_eligibility_sha256",
+        "orientation_eligibility",
+        "selected_task_artifacts",
+        "failure_event_freeze_sha256",
+        "failure_event_freeze",
+    }
+)
+_MAX_LOCK_JSON_BYTES = 16 * 1024 * 1024
 
 
 class ProtocolGuardError(RuntimeError):
@@ -112,6 +134,15 @@ def _reject_json_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON constant {value}")
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
 def _read_lock(
     repo_root: str | Path,
     config: CalibrationGuardConfig | LockedTestGuardConfig,
@@ -126,19 +157,32 @@ def _read_lock(
             f"repo_root must be the git worktree root ({actual_root}), got {repo}"
         )
 
-    freeze_file = (repo / config.required_file).resolve()
+    freeze_file = repo / config.required_file
     try:
         relative_freeze = freeze_file.relative_to(repo).as_posix()
     except ValueError as exc:
         raise error_type("freeze file must be inside the repository") from exc
-    if not freeze_file.is_file():
-        raise error_type(f"required {stage} freeze file is missing: {freeze_file}")
+    current = repo
+    for component in PurePosixPath(relative_freeze).parts:
+        current = current / component
+        if current.is_symlink():
+            raise error_type(f"{stage} freeze file path must not contain symlinks")
     try:
+        file_stat = freeze_file.stat()
+    except OSError as exc:
+        raise error_type(f"required {stage} freeze file is missing: {freeze_file}") from exc
+    if not stat.S_ISREG(file_stat.st_mode):
+        raise error_type(f"required {stage} freeze file is missing: {freeze_file}")
+    if file_stat.st_size > _MAX_LOCK_JSON_BYTES:
+        raise error_type(f"{stage} freeze file exceeds the maximum safe JSON size")
+    try:
+        encoded = freeze_file.read_bytes()
         frozen = json.loads(
-            freeze_file.read_text(encoding="utf-8"),
+            encoded.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
             parse_constant=_reject_json_constant,
         )
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise error_type(
             f"{stage} freeze file is not valid finite JSON: {exc}"
         ) from exc
@@ -258,6 +302,278 @@ def _validate_policy_revision(
         raise error_type(
             "frozen policy_revision does not match manifest policy_revision"
         )
+
+
+def _canonical_sha256(
+    value: Any, path: str, error_type: type[ProtocolGuardError]
+) -> str:
+    try:
+        encoded = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise error_type(f"{path} is not finite canonical JSON") from exc
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_lock_digest(
+    value: Any, path: str, error_type: type[ProtocolGuardError]
+) -> None:
+    if (
+        not isinstance(value, str)
+        or re.fullmatch(r"[0-9a-f]{64}", value) is None
+        or len(set(value)) == 1
+    ):
+        raise error_type(f"{path} must be a non-placeholder lowercase SHA-256")
+
+
+def _validate_code_commit(
+    value: Any, path: str, error_type: type[ProtocolGuardError]
+) -> None:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+        raise error_type(f"{path} must be a lowercase 40-character Git SHA")
+
+
+def _require_exact_artifact_list(
+    value: Any,
+    expected: list[Mapping[str, Any]],
+    path: str,
+    error_type: type[ProtocolGuardError],
+) -> None:
+    if not isinstance(value, list) or value != expected:
+        raise error_type(f"{path} does not exactly match the selected raw artifacts")
+    for index, item in enumerate(value):
+        if not isinstance(item, dict) or set(item) != {
+            "episode_id",
+            "metadata_sha256",
+            "trajectory_sha256",
+        }:
+            raise error_type(f"{path}[{index}] is not a complete artifact identity")
+        if not isinstance(item["episode_id"], str) or not item["episode_id"]:
+            raise error_type(f"{path}[{index}].episode_id is invalid")
+        _validate_lock_digest(item["metadata_sha256"], f"{path}[{index}].metadata_sha256", error_type)
+        _validate_lock_digest(item["trajectory_sha256"], f"{path}[{index}].trajectory_sha256", error_type)
+
+
+def _validate_reality_gate_lock_payload(
+    payload: Mapping[str, Any],
+    task: TaskSpec,
+    policy_revision: str,
+    protocol: ProtocolConfig,
+    repo: Path,
+    head: str,
+    error_type: type[ProtocolGuardError],
+) -> None:
+    """Rehydrate and cross-bind the complete Reality-Gate lock bundle.
+
+    Every nested receipt is parsed by its owning domain module.  Serialized
+    ``passes``/``eligible`` flags are therefore compared with recomputed typed
+    decisions, not merely checked for internal hash consistency.
+    """
+
+    try:
+        from .failure_artifacts import (
+            FailureArtifactError,
+            failure_event_freeze_from_metadata,
+        )
+        from .reality_gate import (
+            RealityGateError,
+            RealityGateLockReceipt,
+            _artifact_identity_from_metadata,
+            orientation_eligibility_from_metadata,
+            reality_gate_receipt_from_metadata,
+        )
+
+        if set(payload) != _REALITY_GATE_LOCK_FIELDS:
+            missing = sorted(_REALITY_GATE_LOCK_FIELDS - set(payload))
+            extra = sorted(set(payload) - _REALITY_GATE_LOCK_FIELDS)
+            detail = []
+            if missing:
+                detail.append("missing " + ", ".join(missing))
+            if extra:
+                detail.append("unexpected " + ", ".join(extra))
+            raise error_type(
+                "Reality-Gate lock payload keys differ: " + "; ".join(detail)
+            )
+        if payload["schema_version"] != 1 or payload["protocol"] != _REALITY_GATE_LOCK_PROTOCOL:
+            raise error_type("Reality-Gate lock schema or protocol is unsupported")
+        _validate_code_commit(payload["code_commit"], "code_commit", error_type)
+        _validate_task(payload, task, error_type)
+        _validate_policy_revision(payload, policy_revision, error_type)
+        if payload["selected_variable"] != {
+            "name": "theta_rel",
+            "symmetry_order": task.planar_symmetry_order,
+        }:
+            raise error_type("Reality-Gate selected_variable is not the frozen theta_rel choice")
+
+        selected_artifacts = payload["selected_task_artifacts"]
+        if not isinstance(selected_artifacts, list) or len(selected_artifacts) != 40:
+            raise error_type("selected_task_artifacts must contain exactly 40 identities")
+        parsed_selected_artifacts = tuple(
+            _artifact_identity_from_metadata(item, f"selected_task_artifacts[{index}]")
+            for index, item in enumerate(selected_artifacts)
+        )
+        if tuple(item.episode_id for item in parsed_selected_artifacts) != tuple(
+            sorted(item.episode_id for item in parsed_selected_artifacts)
+        ):
+            raise error_type("selected_task_artifacts must be sorted by episode ID")
+        if len({item.episode_id for item in parsed_selected_artifacts}) != 40:
+            raise error_type("selected_task_artifacts contains duplicate episode IDs")
+
+        gate_payload = payload["reality_gate_receipt"]
+        _validate_lock_digest(
+            payload["reality_gate_receipt_sha256"],
+            "reality_gate_receipt_sha256",
+            error_type,
+        )
+        if _canonical_sha256(gate_payload, "reality_gate_receipt", error_type) != payload[
+            "reality_gate_receipt_sha256"
+        ]:
+            raise error_type("reality_gate_receipt hash does not match its content")
+        gate = reality_gate_receipt_from_metadata(gate_payload, protocol)
+        if gate.sha256 != payload["reality_gate_receipt_sha256"]:
+            raise error_type("rehydrated Reality-Gate receipt hash differs")
+        try:
+            _git(
+                repo,
+                error_type,
+                "rev-parse",
+                "--verify",
+                f"{gate.code_commit}^{{commit}}",
+            )
+        except ProtocolGuardError as exc:
+            raise error_type(
+                "task-gate Discovery code commit is not present in the repository"
+            ) from exc
+        if gate.policy_revision != policy_revision:
+            raise error_type("task-gate policy revision differs from the lock")
+        if gate.selected_task != task or gate.selected_task is None:
+            raise error_type("task-gate selected task differs from the lock")
+        selected_decision = gate.attempts[-1]
+        expected_artifacts = tuple(sorted(selected_decision.raw_artifacts, key=lambda item: item.episode_id))
+        if expected_artifacts != parsed_selected_artifacts:
+            raise error_type("selected task artifacts differ from recomputed gate cells")
+
+        orientation_payload = payload["orientation_eligibility"]
+        _validate_lock_digest(
+            payload["orientation_eligibility_sha256"],
+            "orientation_eligibility_sha256",
+            error_type,
+        )
+        if _canonical_sha256(orientation_payload, "orientation_eligibility", error_type) != payload[
+            "orientation_eligibility_sha256"
+        ]:
+            raise error_type("orientation eligibility hash does not match its content")
+        orientation = orientation_eligibility_from_metadata(orientation_payload)
+        if orientation.sha256 != payload["orientation_eligibility_sha256"]:
+            raise error_type("rehydrated orientation eligibility hash differs")
+        if orientation.source_artifacts != parsed_selected_artifacts:
+            raise error_type("orientation sources differ from selected task artifacts")
+        if (
+            not orientation.eligible
+            or orientation.symmetry_order != task.planar_symmetry_order
+            or orientation._validation_marker is None
+        ):
+            raise error_type("orientation eligibility does not authorize theta_rel")
+
+        lock_payload = payload["reality_gate_lock_receipt"]
+        _validate_lock_digest(
+            payload["reality_gate_lock_receipt_sha256"],
+            "reality_gate_lock_receipt_sha256",
+            error_type,
+        )
+        if _canonical_sha256(lock_payload, "reality_gate_lock_receipt", error_type) != payload[
+            "reality_gate_lock_receipt_sha256"
+        ]:
+            raise error_type("Reality-Gate lock receipt hash does not match its content")
+        lock = RealityGateLockReceipt(
+            task_gate_receipt=gate,
+            selected_task_artifacts=parsed_selected_artifacts,
+            orientation_eligibility=orientation,
+        )
+        if lock.to_dict() != lock_payload or lock.sha256 != payload[
+            "reality_gate_lock_receipt_sha256"
+        ]:
+            raise error_type("nested Reality-Gate lock receipt is not reconstructable")
+        if lock_payload.get("task_gate_receipt") != gate_payload:
+            raise error_type("nested task-gate receipt differs from the top-level receipt")
+        if lock_payload.get("orientation_eligibility") != orientation_payload:
+            raise error_type("nested orientation eligibility differs")
+
+        freeze_payload = payload["failure_event_freeze"]
+        _validate_lock_digest(
+            payload["failure_event_freeze_sha256"],
+            "failure_event_freeze_sha256",
+            error_type,
+        )
+        if _canonical_sha256(freeze_payload, "failure_event_freeze", error_type) != payload[
+            "failure_event_freeze_sha256"
+        ]:
+            raise error_type("failure-event freeze hash does not match its content")
+        freeze = failure_event_freeze_from_metadata(freeze_payload)
+        if freeze.sha256 != payload["failure_event_freeze_sha256"]:
+            raise error_type("rehydrated failure-event freeze hash differs")
+        expected_freeze_task = {
+            "suite": task.suite,
+            "task_id": task.task_id,
+            "task_rank": task.rank,
+            "language": task.language,
+            "primary_object": task.primary_object,
+            "planar_symmetry_order": task.planar_symmetry_order,
+        }
+        if freeze.task.to_dict() != expected_freeze_task:
+            raise error_type("failure-event freeze task differs from the selected task")
+        expected_ids = tuple(item.episode_id for item in parsed_selected_artifacts)
+        if tuple(item.episode_id for item in freeze.bounds.expected_artifacts) != expected_ids:
+            raise error_type("failure-event bounds do not cover the selected artifacts")
+        if tuple(freeze.video_audit_episode_ids) != expected_ids:
+            raise error_type("failure-event video audit does not cover selected artifacts")
+        if tuple(item.artifact.episode_id for item in freeze.bounds.provenance) != expected_ids:
+            raise error_type("failure-event provenance order differs")
+        if tuple(item.episode_id for item in freeze.annotations) != expected_ids:
+            raise error_type("failure-event annotation order differs")
+        provenance_by_id = {item.artifact.episode_id: item for item in freeze.bounds.provenance}
+        cell_by_id = {cell.episode_id: cell for cell in selected_decision.cells}
+        for annotation in freeze.annotations:
+            cell = cell_by_id.get(annotation.episode_id)
+            provenance = provenance_by_id.get(annotation.episode_id)
+            if cell is None or provenance is None or not cell.executed:
+                raise error_type("failure-event annotation is not bound to a final gate cell")
+            if (
+                annotation.valid_reset != cell.valid
+                or annotation.success != cell.success
+                or provenance.valid_reset != cell.valid
+                or provenance.success != cell.success
+            ):
+                raise error_type("failure-event outcomes disagree with final gate cells")
+
+        implementation_commit = freeze.implementation_commit
+        _validate_code_commit(
+            implementation_commit,
+            "failure_event_freeze.implementation_commit",
+            error_type,
+        )
+        try:
+            _git(
+                repo,
+                error_type,
+                "merge-base",
+                "--is-ancestor",
+                implementation_commit,
+                head,
+            )
+        except ProtocolGuardError as exc:
+            raise error_type(
+                "failure-event implementation commit is not an ancestor of the lock HEAD"
+            ) from exc
+    except error_type:
+        raise
+    except (RealityGateError, FailureArtifactError, KeyError, TypeError, ValueError) as exc:
+        raise error_type(f"Reality-Gate lock evidence is invalid: {exc}") from exc
 
 
 def _validate_selected_variable(
@@ -585,6 +901,7 @@ def assert_calibration_ready(
     repo_root: str | Path,
     config: CalibrationGuardConfig,
     *,
+    protocol: ProtocolConfig,
     task: TaskSpec,
     policy_revision: str,
 ) -> CalibrationReceipt:
@@ -600,6 +917,15 @@ def assert_calibration_ready(
     _validate_task(payload, task, CalibrationGuardError)
     _validate_selected_variable(payload, task, CalibrationGuardError)
     _validate_policy_revision(payload, policy_revision, CalibrationGuardError)
+    _validate_reality_gate_lock_payload(
+        payload,
+        task,
+        policy_revision,
+        protocol,
+        repo,
+        head,
+        CalibrationGuardError,
+    )
     return CalibrationReceipt(repo, head, config.required_tag, freeze_file, payload)
 
 

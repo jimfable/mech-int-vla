@@ -183,6 +183,22 @@ def load_failure_freeze(
     return freeze
 
 
+def failure_event_freeze_from_metadata(value: Any) -> FailureEventFreezeManifest:
+    """Rehydrate one strict canonical freeze object from decoded JSON metadata.
+
+    The guard uses this public wrapper so it shares the exact parser and domain
+    validation used by the on-disk loader, rather than maintaining a second,
+    weaker schema implementation.
+    """
+
+    try:
+        return _freeze_from_metadata(value)
+    except FailureArtifactError:
+        raise
+    except (KeyError, TypeError, ValueError) as exc:
+        raise FailureArtifactError("failure freeze metadata is malformed") from exc
+
+
 def write_failure_event_artifact(
     artifact: FailureEventArtifact,
     output_root: str | Path,
@@ -836,6 +852,7 @@ __all__ = [
     "FailureEventArtifact",
     "create_failure_event_artifact",
     "create_failure_event_artifacts",
+    "failure_event_freeze_from_metadata",
     "load_failure_event_artifact",
     "load_failure_freeze",
     "write_failure_event_artifact",

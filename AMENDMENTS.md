@@ -387,3 +387,43 @@ left to environment resolution.
   precedence, onset/confirmation rules, bounds cohort, and early-termination failure
   behavior are fixed before data and retained in a content-addressed freeze.
 - **Implementing commit:** `f22714a579a82639b1b7ed650b548f40ccbdc69b`
+
+### 2026-08-03 — Harden the post-Discovery lock evidence boundary
+
+- **Prior protocol commit:** `596261b4c2b5b2d7aaaa6fca5f2e12612b9763df`
+- **Technical reason:** After the Discovery outcomes and durable raw backup were
+  visible, the repository still represented the Reality-Gate and failure-event
+  receipts only as write-side objects. A lock consumer could therefore accept a
+  self-consistent hand-written JSON payload without regenerating the deterministic
+  Discovery manifest, gate arithmetic, orientation thresholds, or failure-event
+  semantics. The orientation extraction contract also needed a raw-artifact
+  constructor so caller-supplied state values could not be mistaken for rollout
+  evidence.
+- **Exact change:** Add a strict, duplicate-key-free lock JSON reader; reject
+  symlinked/non-regular/oversized freeze files; require a validated
+  `ProtocolConfig`; rehydrate and recompute the complete Reality-Gate receipt;
+  add a raw-rollout quaternion extraction constructor with fixed equal-state,
+  every-control-step-including-terminal weighting/cadence and extraction tests;
+  rehydrate orientation eligibility and the canonical failure-event freeze with
+  their owning validators; cross-bind all 40 artifact identities, validity and
+  success outcomes, provenance, and hashes; and require the freeze's
+  implementation commit to be an ancestor of the tagged lock commit. This is a
+  two-commit implementation-then-lock workflow and does not alter task order,
+  rollout assignments, thresholds, splits, estimands, or the Locked Test guard.
+- **Affected hypotheses/metrics:** No estimand, threshold, sample size, or
+  rollout behavior changes. The explicit orientation weighting/cadence is a
+  post-Discovery operationalization of the already recorded eligibility check;
+  its outcome is retained and disclosed rather than silently treated as
+  preregistered before outcome visibility.
+- **Outcome visibility:** The exact 40 Discovery rollouts, gate outcomes,
+  orientation state extraction, and deterministic failure-event annotations were
+  visible before this hardening decision. No Calibration output, Calibration
+  manifest, Locked Test artifact, or protected-split label was accessed.
+- **Bias risk and mitigation:** Moderate selection-risk disclosure because the
+  orientation weighting/cadence was made explicit after Discovery. Mitigation is
+  an immutable audit trail, raw-derived extraction, exact content hashes,
+  fail-closed typed rehydration, a clean lock commit, and no protected-split
+  access until the new guard passes. The original Discovery code commit remains
+  separately recorded as `b491dc76641efe3a5c5d7eef6bb87af13d85f10b`.
+- **Implementing commit:** pending hardening checkpoint (recorded before the
+  immutable `prereg-locked-v1` lock commit)

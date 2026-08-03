@@ -926,3 +926,42 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** Retain the verified backup and stopped instance. Treat the local
   hardening and receipt-to-guard integration as unfinished; do not launch
   Calibration until a clean, tested lock commit and exact guard round-trip exist.
+
+### 2026-08-03 18:35 CEST — LOCK-HARDENING-001: close the receipt-to-guard boundary
+
+- **Stage:** post-Discovery implementation hardening; no protected split access
+- **Reason:** The previous guard could validate hashes and a few semantic fields,
+  but a caller could still fabricate a self-consistent Reality-Gate JSON payload.
+  The orientation helper also accepted caller-supplied state values while marking
+  them as rollout-derived.
+- **Changes:** Added a raw-`RolloutArtifact` orientation constructor that extracts
+  the stored EEF/object quaternions, enforces the complete frame cadence, runs
+  identity/±90-degree/180-degree extraction checks, and retains the fixed
+  equal-state/every-step-including-terminal contract. Caller-supplied state
+  evaluation is now explicitly arithmetic-only. Added strict metadata
+  rehydrators that regenerate every Discovery manifest under `ProtocolConfig`,
+  reconstruct every 40-cell attempt, recompute Wilson metadata and point-estimate
+  reproduction/dynamic gates, and validate canonical equivalence. The Calibration
+  guard now rejects duplicate-key, symlinked, non-regular, or oversized lock
+  files; rehydrates the typed Reality-Gate and failure-event freeze objects;
+  cross-binds all 40 artifact hashes, validity/success outcomes, orientation
+  sources, provenance, and content hashes; and requires the failure-freeze
+  implementation commit to be an ancestor of the lock HEAD.
+- **Verification:** The focused non-GPU suite passed (`222 passed` across the
+  allocation, probe-artifact, artifact, feature, predictor, guard, manifest,
+  provenance, feature-pipeline, Reality-Gate, and failure-artifact tests). The
+  full collection remains unable to import the four GPU scoring tests because
+  the local audit environment intentionally has no `torch`; no test changed or
+  accessed the Vast instance. A fresh read-only derivation from all 40 backed-up
+  artifacts still reproduces gate SHA
+  `fd82aae6dd90462820a90448d3d75b649578f58ce898e94b31f4a23bfb6e2566`, orientation
+  SHA `3599dab95b5bbc7ee4b3e6ea1872aa21d7aced6dd3ea61d7287cb6aee863a9fb`, and
+  the strict guard payload validator accepts the complete candidate freeze.
+- **Outcome visibility:** Discovery outcomes and the raw backup were already
+  visible. No Calibration outcome, protected-split manifest, or Locked Test data
+  was accessed. This entry records that ordering explicitly; it does not create
+  a lock or authorize Calibration.
+- **Decision:** Commit this implementation hardening separately. Only after the
+  implementation commit is pushed will I materialize the freeze with that
+  commit, make a lock-only commit, run the clean tagged guard, and decide whether
+  any authorized Calibration runtime exists. Keep Vast instance 46677323 stopped.

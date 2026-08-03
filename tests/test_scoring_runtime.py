@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import random
 import zlib
@@ -9,6 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any, Self
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -43,6 +45,35 @@ from mech_int_vla.scoring_runtime import (
 )
 
 ROOT = Path(__file__).parents[1]
+
+
+class FakeBoundProbe:
+    def __init__(
+        self,
+        probe: ProbeArtifact,
+        *,
+        task_id: int = 5,
+        policy_revision: str = "a" * 40,
+        base_vlm_revision: str = "c" * 40,
+    ) -> None:
+        self.probe = probe
+        self.sha256 = hashlib.sha256(
+            b"synthetic-bound-probe\0" + probe.canonical_json()
+        ).hexdigest()
+        self.rollout = SimpleNamespace(
+            source=SimpleNamespace(
+                task=SimpleNamespace(
+                    suite="libero_10",
+                    task_id=task_id,
+                    rank=1,
+                    language="put the black book on the shelf",
+                    primary_object="black_book",
+                    planar_symmetry_order=2,
+                ),
+                policy_revision=policy_revision,
+                base_vlm_revision=base_vlm_revision,
+            )
+        )
 
 
 def _artifact(*, valid: bool = True, action_count: int = 2) -> RolloutArtifact:
@@ -487,6 +518,10 @@ def _adapter(
     *,
     candidate: str = "vlm_context",
     probe: Any | None = None,
+    bound_task_id: int = 5,
+    bound_policy_revision: str = "a" * 40,
+    bound_base_vlm_revision: str = "c" * 40,
+    reset_seed: Any = 10100,
 ) -> tuple[
     SmolVLAScoringAdapter, FakeEpisode, FakePolicy, FakeInstrumentation, FakeTimer
 ]:
@@ -495,17 +530,31 @@ def _adapter(
     instrumentation = FakeInstrumentation(policy.model, selected=candidate)
     policy.instrumentation = instrumentation
     timer = FakeTimer()
-    adapter = SmolVLAScoringAdapter(
-        episode,
-        FakePolicyRuntime(policy),
-        _artifact(),
+    bound = FakeBoundProbe(
         probe or _probe(candidate),
-        instrumentation,
-        reset_seed=10100,
-        original_condition=ConditionSpec("iid", "iid", 0, {}),
-        repo_root=ROOT,
-        timer_backend=timer,
+        task_id=bound_task_id,
+        policy_revision=bound_policy_revision,
+        base_vlm_revision=bound_base_vlm_revision,
     )
+    with (
+        patch("mech_int_vla.probe_artifacts.BoundProbeArtifact", FakeBoundProbe),
+        patch(
+            "mech_int_vla.probe_artifacts.validate_bound_probe_artifact",
+            return_value=bound,
+        ),
+    ):
+        adapter = SmolVLAScoringAdapter(
+            episode,
+            FakePolicyRuntime(policy),
+            _artifact(),
+            bound,
+            instrumentation,
+            reset_seed=reset_seed,
+            original_condition=ConditionSpec("iid", "iid", 0, {}),
+            protocol=object(),  # validator is replaced by the synthetic unit boundary
+            repo_root=ROOT,
+            timer_backend=timer,
+        )
     return adapter, episode, policy, instrumentation, timer
 
 
@@ -547,6 +596,25 @@ def test_factual_replay_conversion_covers_exact_numeric_state() -> None:
 def test_factual_replay_rejects_invalid_or_empty_artifact() -> None:
     with pytest.raises(ScoringRuntimeError, match="valid nonempty"):
         factual_replay_from_artifact(_artifact(valid=False, action_count=0))
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"bound_task_id": 2},
+        {"bound_policy_revision": "d" * 40},
+        {"bound_base_vlm_revision": "e" * 40},
+    ),
+)
+def test_adapter_rejects_probe_from_an_incompatible_calibration(kwargs) -> None:
+    with pytest.raises(ScoringRuntimeError, match="bound probe .* differs"):
+        _adapter(**kwargs)
+
+
+@pytest.mark.parametrize("reset_seed", (True, 10100.0, "10100", -1))
+def test_adapter_rejects_noncanonical_reset_seed(reset_seed: Any) -> None:
+    with pytest.raises(ScoringRuntimeError, match="nonnegative integer"):
+        _adapter(reset_seed=reset_seed)
 
 
 @pytest.mark.parametrize(
@@ -788,7 +856,7 @@ def test_sidecar_refuses_stale_raw_or_probe_content_links(tmp_path: Path) -> Non
             ContentLinks(
                 "0" * 64,
                 "2" * 64,
-                adapter.probe.sha256(),
+                adapter.bound_probe.sha256,
                 expected.config_sha256,
                 expected.code_sha256,
             ),
@@ -816,7 +884,7 @@ def test_sidecar_refuses_stale_raw_or_probe_content_links(tmp_path: Path) -> Non
             ContentLinks(
                 "1" * 64,
                 "2" * 64,
-                adapter.probe.sha256(),
+                adapter.bound_probe.sha256,
                 "4" * 64,
                 expected.code_sha256,
             ),
@@ -830,7 +898,7 @@ def test_sidecar_refuses_stale_raw_or_probe_content_links(tmp_path: Path) -> Non
             ContentLinks(
                 "1" * 64,
                 "2" * 64,
-                adapter.probe.sha256(),
+                adapter.bound_probe.sha256,
                 expected.config_sha256,
                 "5" * 64,
             ),
@@ -845,14 +913,23 @@ def _adapter_from_parts(
     selected_episode = episode or FakeEpisode()
     instrumentation = FakeInstrumentation(policy.model)
     policy.instrumentation = instrumentation
-    return SmolVLAScoringAdapter(
-        selected_episode,
-        FakePolicyRuntime(policy),
-        _artifact(),
-        _probe(),
-        instrumentation,
-        reset_seed=10100,
-        original_condition=ConditionSpec("iid", "iid", 0, {}),
-        repo_root=ROOT,
-        timer_backend=FakeTimer(),
-    )
+    bound = FakeBoundProbe(_probe())
+    with (
+        patch("mech_int_vla.probe_artifacts.BoundProbeArtifact", FakeBoundProbe),
+        patch(
+            "mech_int_vla.probe_artifacts.validate_bound_probe_artifact",
+            return_value=bound,
+        ),
+    ):
+        return SmolVLAScoringAdapter(
+            selected_episode,
+            FakePolicyRuntime(policy),
+            _artifact(),
+            bound,
+            instrumentation,
+            reset_seed=10100,
+            original_condition=ConditionSpec("iid", "iid", 0, {}),
+            protocol=object(),
+            repo_root=ROOT,
+            timer_backend=FakeTimer(),
+        )

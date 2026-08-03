@@ -14,13 +14,20 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Integral
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
 import numpy as np
 from numpy.typing import NDArray
 
+from .allocation import (
+    AllocationError,
+    ScoreAllocationReceipt,
+    revalidate_score_receipt,
+)
 from .artifacts import RolloutArtifact
+from .config import ProtocolConfig
 from .determinism import hash_seed
 from .features import (
     ACTION_DIMENSION,
@@ -916,14 +923,22 @@ def _validate_and_pair(
     probe: ProbeArtifact,
     *,
     expected_split: str,
+    probe_sha256: str,
+    allocation_receipt: ScoreAllocationReceipt,
 ) -> tuple[_EpisodePair, ...]:
     if not isinstance(probe, ProbeArtifact):
         raise FeaturePipelineError("probe has the wrong artifact type")
     if probe.candidate not in DEFAULT_CANDIDATE_PREFERENCE:
         raise FeaturePipelineError("probe selected candidate is not frozen")
-    probe_sha = _require_sha256(probe.sha256(), "probe sha256")
-    raws = tuple(raw_artifacts)
-    scores = tuple(score_sidecars)
+    probe_sha = _require_sha256(probe_sha256, "bound probe sha256")
+    try:
+        raws = tuple(raw_artifacts)
+    except TypeError as exc:
+        raise FeaturePipelineError("raw feature cohort must be an iterable") from exc
+    try:
+        scores = tuple(score_sidecars)
+    except TypeError as exc:
+        raise FeaturePipelineError("score feature cohort must be an iterable") from exc
     if not raws or not scores:
         raise FeaturePipelineError("raw and score cohorts must be nonempty")
     raw_by_id: dict[str, RolloutArtifact] = {}
@@ -946,6 +961,57 @@ def _validate_and_pair(
         score_by_id[episode_id] = score
     if set(raw_by_id) != set(score_by_id):
         raise FeaturePipelineError("raw and score episode sets are not one-to-one")
+
+    expected_raw = {
+        identity.episode_id: identity
+        for identity in allocation_receipt.rollout.valid_artifacts
+    }
+    expected_scores = {
+        identity.episode_id: identity for identity in allocation_receipt.score_artifacts
+    }
+    if set(raw_by_id) != set(expected_raw):
+        raise FeaturePipelineError(
+            "raw feature cohort does not exactly match the score allocation receipt"
+        )
+    if set(score_by_id) != set(expected_scores):
+        raise FeaturePipelineError(
+            "score feature cohort does not exactly match the score allocation receipt"
+        )
+    for episode_id in sorted(expected_raw):
+        raw = raw_by_id[episode_id]
+        score = score_by_id[episode_id]
+        raw_identity = expected_raw[episode_id]
+        score_identity = expected_scores[episode_id]
+        if (
+            raw.hashes.metadata_sha256 != raw_identity.metadata_sha256
+            or raw.hashes.trajectory_sha256 != raw_identity.trajectory_sha256
+        ):
+            raise FeaturePipelineError(
+                f"{episode_id}: raw hashes differ from score allocation receipt"
+            )
+        if (
+            score.metadata_sha256 != score_identity.metadata_sha256
+            or score.primitives_sha256 != score_identity.primitives_sha256
+        ):
+            raise FeaturePipelineError(
+                f"{episode_id}: score hashes differ from score allocation receipt"
+            )
+        links = score.metadata.get("links")
+        expected_links = {
+            "raw_metadata_sha256": score_identity.raw_metadata_sha256,
+            "raw_trajectory_sha256": score_identity.raw_trajectory_sha256,
+            "probe_sha256": allocation_receipt.probe_sha256,
+            "config_sha256": allocation_receipt.config_sha256,
+            "code_sha256": allocation_receipt.code_sha256,
+        }
+        if (
+            not isinstance(links, Mapping)
+            or set(links) != set(expected_links)
+            or any(links.get(name) != value for name, value in expected_links.items())
+        ):
+            raise FeaturePipelineError(
+                f"{episode_id}: score links differ from score allocation receipt"
+            )
     pairs = tuple(
         _validate_pair(
             raw_by_id[episode_id],
@@ -963,6 +1029,38 @@ def _validate_and_pair(
     if any(pair.cohort_identity != cohort for pair in pairs):
         raise FeaturePipelineError("feature cohort mixes policy/config/code links")
     return pairs
+
+
+def _validated_feature_allocation(
+    score_receipt: ScoreAllocationReceipt,
+    bound_probe: object,
+    *,
+    expected_split: str,
+    protocol: ProtocolConfig,
+    repo_root: str | Path,
+) -> tuple[ScoreAllocationReceipt, ProbeArtifact, str]:
+    """Resolve the sole trusted identity context for a feature cohort."""
+
+    try:
+        receipt = revalidate_score_receipt(
+            score_receipt,
+            bound_probe,
+            protocol=protocol,
+            repo_root=repo_root,
+        )
+    except (AllocationError, TypeError, ValueError) as exc:
+        raise FeaturePipelineError(
+            f"score allocation receipt validation failed: {exc}"
+        ) from exc
+    if receipt.rollout.source.split.value != expected_split:
+        raise FeaturePipelineError(
+            f"score allocation receipt must target {expected_split}"
+        )
+    probe = getattr(bound_probe, "probe", None)
+    if not isinstance(probe, ProbeArtifact):
+        raise FeaturePipelineError("bound probe has the wrong numerical artifact type")
+    probe_sha256 = _require_sha256(receipt.probe_sha256, "bound probe sha256")
+    return receipt, probe, probe_sha256
 
 
 def _predict_probe_block(
@@ -1156,6 +1254,7 @@ def _build_cohort(
     *,
     split: str,
     probe: ProbeArtifact,
+    probe_sha256: str,
     action_scale: ActionScale,
     coverage_references: Sequence[CoverageState],
     probe_norm_references: Sequence[ProbeNormState],
@@ -1197,7 +1296,7 @@ def _build_cohort(
         m0_matrix,
         m1_matrix,
         m2_matrix,
-        probe.sha256(),
+        _require_sha256(probe_sha256, "bound probe sha256"),
         reference_sha256,
         prepared[0].pair.task_identity,
         prepared[0].pair.cohort_identity,
@@ -1207,12 +1306,29 @@ def _build_cohort(
 def build_calibration_features(
     raw_artifacts: Sequence[RolloutArtifact],
     score_sidecars: Sequence[LoadedScoringSidecar],
-    probe: ProbeArtifact,
+    bound_probe: object,
+    score_receipt: ScoreAllocationReceipt,
+    *,
+    protocol: ProtocolConfig,
+    repo_root: str | Path,
 ) -> tuple[FeatureReferenceBundle, FeatureCohort]:
-    """Build OOF Calibration features and the only allowed Test reference bundle."""
+    """Build OOF Calibration features from one exact score allocation."""
+
+    receipt, probe, bound_probe_sha256 = _validated_feature_allocation(
+        score_receipt,
+        bound_probe,
+        expected_split="calibration",
+        protocol=protocol,
+        repo_root=repo_root,
+    )
 
     pairs = _validate_and_pair(
-        raw_artifacts, score_sidecars, probe, expected_split="calibration"
+        raw_artifacts,
+        score_sidecars,
+        probe,
+        expected_split="calibration",
+        probe_sha256=bound_probe_sha256,
+        allocation_receipt=receipt,
     )
     prepared = _prepare_states(pairs, probe)
     original_actions = np.stack(
@@ -1225,7 +1341,7 @@ def build_calibration_features(
         action_scale,
         coverage_states,
         probe_norm_states,
-        probe.sha256(),
+        bound_probe_sha256,
         probe.candidate,
         pairs[0].task_identity,
         pairs[0].cohort_identity,
@@ -1235,6 +1351,7 @@ def build_calibration_features(
         prepared,
         split="calibration",
         probe=probe,
+        probe_sha256=bound_probe_sha256,
         action_scale=bundle.action_scale,
         coverage_references=bundle.coverage_states,
         probe_norm_references=bundle.probe_norm_states,
@@ -1246,17 +1363,33 @@ def build_calibration_features(
 def build_locked_test_features(
     raw_artifacts: Sequence[RolloutArtifact],
     score_sidecars: Sequence[LoadedScoringSidecar],
-    probe: ProbeArtifact,
+    bound_probe: object,
+    score_receipt: ScoreAllocationReceipt,
     reference_bundle: FeatureReferenceBundle,
+    *,
+    protocol: ProtocolConfig,
+    repo_root: str | Path,
 ) -> FeatureCohort:
-    """Build Test features using only the supplied frozen Calibration references."""
+    """Build Test features from one exact score allocation and frozen references."""
 
     if not isinstance(reference_bundle, FeatureReferenceBundle):
         raise FeaturePipelineError("reference bundle has the wrong type")
-    pairs = _validate_and_pair(
-        raw_artifacts, score_sidecars, probe, expected_split="locked_test"
+    receipt, probe, bound_probe_sha256 = _validated_feature_allocation(
+        score_receipt,
+        bound_probe,
+        expected_split="locked_test",
+        protocol=protocol,
+        repo_root=repo_root,
     )
-    if probe.sha256() != reference_bundle.probe_sha256:
+    pairs = _validate_and_pair(
+        raw_artifacts,
+        score_sidecars,
+        probe,
+        expected_split="locked_test",
+        probe_sha256=bound_probe_sha256,
+        allocation_receipt=receipt,
+    )
+    if bound_probe_sha256 != reference_bundle.probe_sha256:
         raise FeaturePipelineError("Locked Test probe differs from reference bundle")
     if probe.candidate != reference_bundle.selected_candidate:
         raise FeaturePipelineError(
@@ -1275,6 +1408,7 @@ def build_locked_test_features(
         prepared,
         split="locked_test",
         probe=probe,
+        probe_sha256=bound_probe_sha256,
         action_scale=reference_bundle.action_scale,
         coverage_references=reference_bundle.coverage_states,
         probe_norm_references=reference_bundle.probe_norm_states,

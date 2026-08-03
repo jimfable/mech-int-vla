@@ -4,17 +4,23 @@ import hashlib
 import math
 from dataclasses import replace
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 from mech_int_vla.artifacts import ArtifactHashes, RolloutArtifact
+from mech_int_vla.config import SplitName, load_protocol_config
 from mech_int_vla.determinism import hash_seed
 from mech_int_vla.feature_pipeline import (
     FeaturePipelineError,
-    build_calibration_features,
-    build_locked_test_features,
+)
+from mech_int_vla.feature_pipeline import (
+    build_calibration_features as _build_calibration_features_bound,
+)
+from mech_int_vla.feature_pipeline import (
+    build_locked_test_features as _build_locked_test_features_bound,
 )
 from mech_int_vla.features import M0_FEATURE_NAMES, M1_FEATURE_NAMES
 from mech_int_vla.probes import (
@@ -27,9 +33,106 @@ from mech_int_vla.probes import (
 )
 from mech_int_vla.scoring import COST_FIELDS, FROZEN_TRANSFORMS, LoadedScoringSidecar
 
+ROOT = Path(__file__).resolve().parents[1]
+PROTOCOL = load_protocol_config(ROOT / "configs")
+
 
 def _sha(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+CONFIG_SHA256 = _sha("config")
+CODE_SHA256 = _sha("code")
+
+
+class _FakeBoundProbe:
+    def __init__(self, probe: ProbeArtifact) -> None:
+        self.probe = probe
+        self.sha256 = probe.sha256()
+
+
+def _score_receipt(
+    raw_artifacts: object,
+    score_sidecars: object,
+    probe: ProbeArtifact,
+) -> SimpleNamespace:
+    raws = tuple(raw_artifacts)
+    scores = tuple(score_sidecars)
+    split = SplitName(str(raws[0].metadata["episode"]["split"]))
+    raw_identities = tuple(
+        SimpleNamespace(
+            episode_id=raw.episode_id,
+            metadata_sha256=raw.hashes.metadata_sha256,
+            trajectory_sha256=raw.hashes.trajectory_sha256,
+        )
+        for raw in sorted(raws, key=lambda item: item.episode_id)
+    )
+    raw_by_id = {raw.episode_id: raw for raw in raws}
+    score_identities = tuple(
+        SimpleNamespace(
+            episode_id=str(score.metadata["episode_id"]),
+            metadata_sha256=score.metadata_sha256,
+            primitives_sha256=score.primitives_sha256,
+            raw_metadata_sha256=raw_by_id[
+                str(score.metadata["episode_id"])
+            ].hashes.metadata_sha256,
+            raw_trajectory_sha256=raw_by_id[
+                str(score.metadata["episode_id"])
+            ].hashes.trajectory_sha256,
+        )
+        for score in sorted(scores, key=lambda item: str(item.metadata["episode_id"]))
+    )
+    return SimpleNamespace(
+        rollout=SimpleNamespace(
+            source=SimpleNamespace(split=split), valid_artifacts=raw_identities
+        ),
+        probe_sha256=probe.sha256(),
+        config_sha256=CONFIG_SHA256,
+        code_sha256=CODE_SHA256,
+        score_artifacts=score_identities,
+    )
+
+
+def build_calibration_features(
+    raw_artifacts: object, score_sidecars: object, probe: ProbeArtifact
+) -> object:
+    bound = _FakeBoundProbe(probe)
+    receipt = _score_receipt(raw_artifacts, score_sidecars, probe)
+    with patch(
+        "mech_int_vla.feature_pipeline.revalidate_score_receipt",
+        return_value=receipt,
+    ):
+        return _build_calibration_features_bound(
+            raw_artifacts,
+            score_sidecars,
+            bound,
+            receipt,
+            protocol=PROTOCOL,
+            repo_root=ROOT,
+        )
+
+
+def build_locked_test_features(
+    raw_artifacts: object,
+    score_sidecars: object,
+    probe: ProbeArtifact,
+    reference_bundle: object,
+) -> object:
+    bound = _FakeBoundProbe(probe)
+    receipt = _score_receipt(raw_artifacts, score_sidecars, probe)
+    with patch(
+        "mech_int_vla.feature_pipeline.revalidate_score_receipt",
+        return_value=receipt,
+    ):
+        return _build_locked_test_features_bound(
+            raw_artifacts,
+            score_sidecars,
+            bound,
+            receipt,
+            reference_bundle,
+            protocol=PROTOCOL,
+            repo_root=ROOT,
+        )
 
 
 def _probe(candidate: str = "vlm_context") -> ProbeArtifact:
@@ -524,7 +627,7 @@ def test_locked_test_rejects_reference_probe_task_and_cohort_mismatch() -> None:
         episode_offset=1.0,
         code_sha256=_sha("different-scoring-source"),
     )
-    with pytest.raises(FeaturePipelineError, match="cohort differs"):
+    with pytest.raises(FeaturePipelineError, match="allocation receipt"):
         build_locked_test_features(test_raws, [wrong_source_score], probe, bundle)
 
 
@@ -538,16 +641,72 @@ def test_one_to_one_duplicates_and_split_fail_before_reduction() -> None:
     locked_raws, locked_scores = _paired_cohort(
         split="locked_test", probe=probe, successes=(False,), base_inits=(30,)
     )
-    with pytest.raises(FeaturePipelineError, match="must all be calibration"):
+    with pytest.raises(FeaturePipelineError, match="must target calibration"):
         build_calibration_features(locked_raws, locked_scores, probe)
+
+
+def test_feature_builder_rejects_non_receipt_subset_and_non_iterable() -> None:
+    probe = _probe()
+    raws, scores = _paired_cohort(split="calibration", probe=probe)
+    bound = _FakeBoundProbe(probe)
+    receipt = _score_receipt(raws, scores, probe)
+    with patch(
+        "mech_int_vla.feature_pipeline.revalidate_score_receipt",
+        return_value=receipt,
+    ):
+        with pytest.raises(FeaturePipelineError, match="exactly match"):
+            _build_calibration_features_bound(
+                raws[:-1],
+                scores[:-1],
+                bound,
+                receipt,
+                protocol=PROTOCOL,
+                repo_root=ROOT,
+            )
+        with pytest.raises(FeaturePipelineError, match="must be an iterable"):
+            _build_calibration_features_bound(
+                None,
+                scores,
+                bound,
+                receipt,
+                protocol=PROTOCOL,
+                repo_root=ROOT,
+            )
+
+
+@pytest.mark.parametrize("source", ["config_sha256", "code_sha256"])
+def test_feature_builder_rejects_stale_config_or_code_link(source: str) -> None:
+    probe = _probe()
+    raws, scores = _paired_cohort(split="calibration", probe=probe)
+    bound = _FakeBoundProbe(probe)
+    receipt = _score_receipt(raws, scores, probe)
+    first = scores[0]
+    metadata = {**first.metadata, "links": dict(first.metadata["links"])}
+    metadata["links"][source] = _sha(f"stale-{source}")
+    stale = replace(first, metadata=metadata)
+    with (
+        patch(
+            "mech_int_vla.feature_pipeline.revalidate_score_receipt",
+            return_value=receipt,
+        ),
+        pytest.raises(FeaturePipelineError, match="allocation receipt"),
+    ):
+        _build_calibration_features_bound(
+            raws,
+            [stale, *scores[1:]],
+            bound,
+            receipt,
+            protocol=PROTOCOL,
+            repo_root=ROOT,
+        )
 
 
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [
-        ("raw_metadata_link", "metadata hash link"),
-        ("raw_trajectory_link", "trajectory hash link"),
-        ("probe_link", "different probe"),
+        ("raw_metadata_link", "allocation receipt"),
+        ("raw_trajectory_link", "allocation receipt"),
+        ("probe_link", "allocation receipt"),
         ("stride", "stride control steps"),
         ("width", "probe width"),
         ("outcome", "factual outcomes"),

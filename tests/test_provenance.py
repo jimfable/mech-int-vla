@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from mech_int_vla import provenance
+from mech_int_vla.config import load_protocol_config
 from mech_int_vla.failure_events import ArtifactIdentity
 from mech_int_vla.probes import (
     DEFAULT_CANDIDATE_PREFERENCE,
@@ -25,6 +26,9 @@ from mech_int_vla.provenance import (
     frozen_config_sha256,
     scoring_source_sha256,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
+PROTOCOL = load_protocol_config(ROOT / "configs")
 
 
 def _write_allowlists(root: Path) -> None:
@@ -124,6 +128,26 @@ def test_mutation_changes_only_the_owning_allowlist_hash(tmp_path: Path) -> None
     assert scoring_source_sha256(tmp_path) != original_source
 
 
+def test_cross_file_mutation_cannot_produce_a_mixed_snapshot_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_allowlists(tmp_path)
+    original_read = provenance._read_regular_file
+    calls = 0
+
+    def mutate_an_earlier_file(root: Path, relative: str) -> bytes:
+        nonlocal calls
+        calls += 1
+        contents = original_read(root, relative)
+        if calls == 2:
+            (root / FROZEN_CONFIG_FILES[0]).write_bytes(b"changed after first read")
+        return contents
+
+    monkeypatch.setattr(provenance, "_read_regular_file", mutate_an_earlier_file)
+    with pytest.raises(ProvenanceError, match="stable repository snapshot"):
+        frozen_config_sha256(tmp_path)
+
+
 @pytest.mark.parametrize("kind", ["config", "source"])
 def test_missing_allowlisted_file_fails_closed(tmp_path: Path, kind: str) -> None:
     _write_allowlists(tmp_path)
@@ -180,20 +204,34 @@ def test_allowlist_repo_root_escape_is_rejected(
         frozen_config_sha256(tmp_path)
 
 
-def test_content_links_compute_and_bind_every_exact_input(tmp_path: Path) -> None:
+def test_content_links_compute_and_bind_every_exact_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_allowlists(tmp_path)
     raw = ArtifactIdentity(
         episode_id="calibration-task1-init10-iid",
         metadata_sha256="1" * 64,
         trajectory_sha256="2" * 64,
     )
-    probe = _probe()
+    bound_sha = hashlib.sha256(b"bound-probe").hexdigest()
 
-    links = content_links_for(raw, probe, tmp_path)
+    class FakeBoundProbe:
+        sha256 = bound_sha
+
+    monkeypatch.setattr(
+        "mech_int_vla.probe_artifacts.BoundProbeArtifact", FakeBoundProbe
+    )
+    monkeypatch.setattr(
+        "mech_int_vla.probe_artifacts.validate_bound_probe_artifact",
+        lambda artifact, **_: artifact,
+    )
+    bound = FakeBoundProbe()
+
+    links = content_links_for(raw, bound, tmp_path, protocol=PROTOCOL)
 
     assert links.raw_metadata_sha256 == raw.metadata_sha256
     assert links.raw_trajectory_sha256 == raw.trajectory_sha256
-    assert links.probe_sha256 == probe.sha256()
+    assert links.probe_sha256 == bound_sha
     assert links.config_sha256 == frozen_config_sha256(tmp_path)
     assert links.code_sha256 == scoring_source_sha256(tmp_path)
     assert all(
@@ -208,6 +246,11 @@ def test_content_links_reject_unvalidated_raw_or_probe(tmp_path: Path) -> None:
     probe = _probe()
 
     with pytest.raises(ProvenanceError, match="raw"):
-        content_links_for(object(), probe, tmp_path)  # type: ignore[arg-type]
+        content_links_for(
+            object(),
+            probe,
+            tmp_path,
+            protocol=PROTOCOL,  # type: ignore[arg-type]
+        )
     with pytest.raises(ProvenanceError, match="probe"):
-        content_links_for(raw, object(), tmp_path)  # type: ignore[arg-type]
+        content_links_for(raw, probe, tmp_path, protocol=PROTOCOL)

@@ -16,8 +16,8 @@ import stat
 from pathlib import Path, PurePosixPath
 from typing import Final, Protocol
 
+from .config import ProtocolConfig
 from .failure_events import ArtifactIdentity
-from .probes import ProbeArtifact
 from .scoring import ContentLinks
 
 FROZEN_CONFIG_FILES: Final[tuple[str, ...]] = (
@@ -31,6 +31,7 @@ FROZEN_CONFIG_FILES: Final[tuple[str, ...]] = (
 )
 
 SCORING_SOURCE_FILES: Final[tuple[str, ...]] = (
+    "src/mech_int_vla/allocation.py",
     "src/mech_int_vla/artifacts.py",
     "src/mech_int_vla/config.py",
     "src/mech_int_vla/determinism.py",
@@ -41,6 +42,7 @@ SCORING_SOURCE_FILES: Final[tuple[str, ...]] = (
     "src/mech_int_vla/libero_runtime.py",
     "src/mech_int_vla/manifest.py",
     "src/mech_int_vla/probes.py",
+    "src/mech_int_vla/probe_artifacts.py",
     "src/mech_int_vla/provenance.py",
     "src/mech_int_vla/rollout.py",
     "src/mech_int_vla/scoring.py",
@@ -75,8 +77,10 @@ def scoring_source_sha256(repo_root: str | Path) -> str:
 
 def content_links_for(
     raw: ArtifactIdentity,
-    probe: ProbeArtifact,
+    bound_probe: object,
     repo_root: str | Path,
+    *,
+    protocol: ProtocolConfig,
 ) -> ContentLinks:
     """Compute all links for one raw artifact, frozen probe, and repository.
 
@@ -87,9 +91,22 @@ def content_links_for(
 
     if not isinstance(raw, ArtifactIdentity):
         raise ProvenanceError("raw must be a validated ArtifactIdentity")
-    if not isinstance(probe, ProbeArtifact):
-        raise ProvenanceError("probe must be a validated ProbeArtifact")
-    probe_sha256 = probe.sha256()
+    # Local import avoids allocation -> provenance -> bound-probe import cycles.
+    from .probe_artifacts import (
+        BoundProbeArtifact,
+        BoundProbeError,
+        validate_bound_probe_artifact,
+    )
+
+    if not isinstance(bound_probe, BoundProbeArtifact):
+        raise ProvenanceError("probe must be a validated BoundProbeArtifact")
+    try:
+        validate_bound_probe_artifact(
+            bound_probe, protocol=protocol, repo_root=repo_root
+        )
+    except (BoundProbeError, TypeError, ValueError) as exc:
+        raise ProvenanceError(f"bound probe validation failed: {exc}") from exc
+    probe_sha256 = bound_probe.sha256
     if not _is_lower_sha256(probe_sha256):
         raise ProvenanceError("probe produced an invalid SHA-256 digest")
     return ContentLinks(
@@ -111,11 +128,21 @@ def _allowlisted_sha256(
     digest = hashlib.sha256()
     _frame(digest, domain)
     digest.update(len(paths).to_bytes(_FRAME_BYTES, "big"))
-    for relative in paths:
+    before = tuple(
+        _file_identity(_inspect_regular_file(root, relative)[1]) for relative in paths
+    )
+    contents = tuple(_read_regular_file(root, relative) for relative in paths)
+    after = tuple(
+        _file_identity(_inspect_regular_file(root, relative)[1]) for relative in paths
+    )
+    if before != after:
+        raise ProvenanceError(
+            "allowlisted files did not form one stable repository snapshot"
+        )
+    for relative, content in zip(paths, contents, strict=True):
         path_bytes = relative.encode("utf-8")
-        contents = _read_regular_file(root, relative)
         _frame(digest, path_bytes)
-        _frame(digest, contents)
+        _frame(digest, content)
     result = digest.hexdigest()
     if not _is_lower_sha256(result):  # pragma: no cover - hashlib invariant
         raise ProvenanceError("hash implementation produced an invalid SHA-256")
@@ -159,7 +186,7 @@ def _validate_allowlist(relative_paths: tuple[str, ...]) -> tuple[str, ...]:
     return relative_paths
 
 
-def _read_regular_file(root: Path, relative: str) -> bytes:
+def _inspect_regular_file(root: Path, relative: str) -> tuple[Path, os.stat_result]:
     parts = PurePosixPath(relative).parts
     parent = root
     for component in parts[:-1]:
@@ -188,6 +215,11 @@ def _read_regular_file(root: Path, relative: str) -> bytes:
         raise ProvenanceError(
             f"allowlisted file {relative!r} must be regular and not a symlink"
         )
+    return path, before
+
+
+def _read_regular_file(root: Path, relative: str) -> bytes:
+    path, before = _inspect_regular_file(root, relative)
 
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
@@ -206,7 +238,7 @@ def _read_regular_file(root: Path, relative: str) -> bytes:
             opened_after = os.fstat(descriptor)
         finally:
             os.close(descriptor)
-        after = path.lstat()
+        _, after = _inspect_regular_file(root, relative)
     except ProvenanceError:
         raise
     except OSError as exc:

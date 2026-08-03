@@ -547,6 +547,20 @@ def load_probe_artifact(
     return artifact
 
 
+def probe_artifact_from_metadata(value: Any) -> ProbeArtifact:
+    """Strictly reconstruct a numerical probe from canonical metadata.
+
+    Bound provenance containers embed probe metadata rather than a filesystem
+    path.  This supported parser keeps their loader off the private implementation
+    helper while retaining exact reconstruction checks.
+    """
+
+    artifact = _probe_artifact_from_metadata(value)
+    if artifact.to_metadata() != value:
+        raise ProbeError("probe metadata is not exactly reconstructable")
+    return artifact
+
+
 def episode_equal_weights(episode_id: ArrayLike) -> NDArray[np.float64]:
     """Return row weights such that every episode has total weight one."""
 
@@ -1428,6 +1442,7 @@ __all__ = [
     "fit_centered_ridge",
     "load_probe_artifact",
     "make_group_folds",
+    "probe_artifact_from_metadata",
     "select_and_fit_circular_probe",
     "select_candidate_one_standard_error",
     "symmetry_aware_circular_error",

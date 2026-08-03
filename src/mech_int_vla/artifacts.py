@@ -187,6 +187,29 @@ class ProbeCohort:
         return self.manifest.sha256
 
 
+def probe_cohort_array_sha256(value: NDArray[Any]) -> str:
+    """Hash one logical probe-cohort array with dtype and shape framing."""
+
+    array = np.array(value, copy=True, order="C")
+    if array.dtype.kind == "f" and np.isnan(array).any():
+        array[np.isnan(array)] = np.nan
+    canonical = np.ascontiguousarray(
+        array.astype(array.dtype.newbyteorder("<"), copy=False)
+    )
+    header = json.dumps(
+        {"dtype": canonical.dtype.str, "shape": list(canonical.shape)},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    digest = hashlib.sha256(b"mech-int-vla/probe-training-array/v1\0")
+    digest.update(len(header).to_bytes(8, "big"))
+    digest.update(header)
+    digest.update(canonical.tobytes(order="C"))
+    return digest.hexdigest()
+
+
 def _fail(where: str, message: str) -> None:
     raise ArtifactValidationError(f"{where}: {message}")
 
@@ -1325,6 +1348,25 @@ def assemble_probe_cohort(
         }
     )
 
+    training_content = {
+        "row_count": samples.n_rows,
+        "episode_id_sha256": probe_cohort_array_sha256(episode_id),
+        "base_init_state_id_sha256": probe_cohort_array_sha256(base_init_state_id),
+        "control_step_sha256": probe_cohort_array_sha256(control_step),
+        "theta_rel_sha256": probe_cohort_array_sha256(theta_rel),
+        "failure_label_sha256": probe_cohort_array_sha256(failure_label),
+        "activation_features": {
+            candidate: {
+                "shape": list(activation_features[candidate].shape),
+                "dtype": activation_features[candidate].dtype.str,
+                "logical_sha256": probe_cohort_array_sha256(
+                    activation_features[candidate]
+                ),
+            }
+            for candidate in ACTIVATION_CANDIDATES
+        },
+    }
+
     episode_entries = [
         {
             "episode_id": artifact.episode_id,
@@ -1359,6 +1401,7 @@ def assemble_probe_cohort(
                 "outcome_conditioned": False,
             },
             "activation_candidates": list(ACTIVATION_CANDIDATES),
+            "training_content": training_content,
             "episodes": episode_entries,
             "invalid_reset_episode_ids": invalid_ids,
         }
@@ -1385,4 +1428,5 @@ __all__ = [
     "RolloutArtifact",
     "assemble_probe_cohort",
     "load_rollout_artifact",
+    "probe_cohort_array_sha256",
 ]

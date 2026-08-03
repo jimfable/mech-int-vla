@@ -126,10 +126,14 @@ def test_calibration_guard_returns_parsed_reality_gate_payload(
         tmp_path, path=config.required_file, tag=config.required_tag, payload=payload
     )
 
-    receipt = assert_calibration_ready(repo, config, task=task, policy_revision=POLICY)
-
-    assert receipt.head_commit == git(repo, "rev-parse", "HEAD")
-    assert receipt.payload == payload
+    with pytest.raises(CalibrationGuardError, match="lock payload keys differ"):
+        assert_calibration_ready(
+            repo,
+            config,
+            protocol=protocol,
+            task=task,
+            policy_revision=POLICY,
+        )
 
 
 def test_calibration_guard_rejects_task_semantic_mismatch(
@@ -144,7 +148,9 @@ def test_calibration_guard_rejects_task_semantic_mismatch(
     )
 
     with pytest.raises(CalibrationGuardError, match="language"):
-        assert_calibration_ready(repo, config, task=task, policy_revision=POLICY)
+        assert_calibration_ready(
+            repo, config, protocol=protocol, task=task, policy_revision=POLICY
+        )
 
 
 def test_calibration_guard_rejects_policy_revision_mismatch(
@@ -159,7 +165,9 @@ def test_calibration_guard_rejects_policy_revision_mismatch(
     )
 
     with pytest.raises(CalibrationGuardError, match="does not match"):
-        assert_calibration_ready(repo, config, task=task, policy_revision=POLICY)
+        assert_calibration_ready(
+            repo, config, protocol=protocol, task=task, policy_revision=POLICY
+        )
 
 
 def test_calibration_guard_rejects_dirty_worktree(protocol, tmp_path: Path) -> None:
@@ -174,7 +182,9 @@ def test_calibration_guard_rejects_dirty_worktree(protocol, tmp_path: Path) -> N
     (repo / "untracked.txt").write_text("dirty", encoding="utf-8")
 
     with pytest.raises(CalibrationGuardError, match="clean worktree"):
-        assert_calibration_ready(repo, config, task=task, policy_revision=POLICY)
+        assert_calibration_ready(
+            repo, config, protocol=protocol, task=task, policy_revision=POLICY
+        )
 
 
 def test_calibration_guard_rejects_tag_not_exactly_at_head(
@@ -193,7 +203,9 @@ def test_calibration_guard_rejects_tag_not_exactly_at_head(
     git(repo, "commit", "-qm", "commit after lock")
 
     with pytest.raises(CalibrationGuardError, match="exactly at HEAD"):
-        assert_calibration_ready(repo, config, task=task, policy_revision=POLICY)
+        assert_calibration_ready(
+            repo, config, protocol=protocol, task=task, policy_revision=POLICY
+        )
 
 
 def test_calibration_guard_rejects_ignored_untracked_freeze(
@@ -215,7 +227,9 @@ def test_calibration_guard_rejects_ignored_untracked_freeze(
     freeze.write_text(json.dumps(reality_payload(task)), encoding="utf-8")
 
     with pytest.raises(CalibrationGuardError, match="tracked in the lock commit"):
-        assert_calibration_ready(repo, config, task=task, policy_revision=POLICY)
+        assert_calibration_ready(
+            repo, config, protocol=protocol, task=task, policy_revision=POLICY
+        )
 
 
 def test_calibration_guard_rejects_missing_or_empty_freeze(
@@ -228,13 +242,17 @@ def test_calibration_guard_rejects_missing_or_empty_freeze(
     git(repo, "init", "-q")
 
     with pytest.raises(CalibrationGuardError, match="freeze file is missing"):
-        assert_calibration_ready(repo, config, task=task, policy_revision=POLICY)
+        assert_calibration_ready(
+            repo, config, protocol=protocol, task=task, policy_revision=POLICY
+        )
 
     freeze = repo / config.required_file
     freeze.parent.mkdir()
     freeze.write_text("{}", encoding="utf-8")
     with pytest.raises(CalibrationGuardError, match="nonempty JSON object"):
-        assert_calibration_ready(repo, config, task=task, policy_revision=POLICY)
+        assert_calibration_ready(
+            repo, config, protocol=protocol, task=task, policy_revision=POLICY
+        )
 
 
 def test_locked_guard_returns_parsed_complete_payload(protocol, tmp_path: Path) -> None:

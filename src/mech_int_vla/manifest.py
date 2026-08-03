@@ -296,6 +296,7 @@ def generate_episode_manifest(
             assert_calibration_ready(
                 repo_root,
                 config.split.calibration_guard,
+                protocol=config,
                 task=task,
                 policy_revision=policy_revision,
             )
@@ -312,6 +313,37 @@ def generate_episode_manifest(
             raise ProtocolConfigError(
                 f"{split.value} manifest code_commit must equal the guarded HEAD commit"
             )
+
+    return reconstruct_episode_manifest(
+        split,
+        task,
+        config,
+        policy_revision=policy_revision,
+        code_commit=code_commit,
+    )
+
+
+def reconstruct_episode_manifest(
+    split: SplitName | str,
+    task: TaskSpec,
+    config: ProtocolConfig,
+    *,
+    policy_revision: str,
+    code_commit: str,
+) -> Manifest:
+    """Purely reconstruct frozen topology for historical receipt validation.
+
+    Unlike :func:`generate_episode_manifest`, this function does not authorize
+    collection of a protected split.  It exists so a manifest collected at the
+    exact Reality-Gate or Calibration lock commit remains independently
+    revalidatable after HEAD advances to a later lock commit.
+    """
+
+    split = SplitName(split)
+    if task not in config.task_order.tasks:
+        raise ProtocolConfigError("task is not present in the configured task order")
+    if not policy_revision or not code_commit:
+        raise ProtocolConfigError("policy_revision and code_commit are required")
 
     init_ids = config.split.splits[split].init_state_ids.ids()
     episodes: list[EpisodeSpec] = []

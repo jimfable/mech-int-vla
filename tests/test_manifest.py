@@ -10,6 +10,8 @@ import pytest
 
 from mech_int_vla import SplitName, generate_episode_manifest, load_protocol_config
 from mech_int_vla.config import ProtocolConfigError
+from mech_int_vla.guard import CalibrationGuardError
+from mech_int_vla.manifest import reconstruct_episode_manifest
 
 ROOT = Path(__file__).parents[1]
 POLICY = "31d453f7edd78c839a8bbc39744a292686daf0de"
@@ -152,13 +154,12 @@ def test_calibration_has_eight_cells_and_balanced_cardinal_directions(
     repo, head = ready_repo(
         tmp_path, protocol.split.calibration_guard, reality_payload(task)
     )
-    manifest = generate_episode_manifest(
+    manifest = reconstruct_episode_manifest(
         SplitName.CALIBRATION,
         task,
         protocol,
         policy_revision=POLICY,
         code_commit=head,
-        repo_root=repo,
     )
 
     assert len(manifest.episodes) == 160
@@ -187,6 +188,44 @@ def test_calibration_has_eight_cells_and_balanced_cardinal_directions(
     assert manifest.episodes[0].noise_seed("output", 0) == manifest.episodes[
         0
     ].noise_seed("output", 0)
+
+
+def test_historical_protected_manifest_can_be_revalidated_after_head_advances(
+    protocol, tmp_path: Path
+) -> None:
+    task = protocol.task_order.tasks[0]
+    repo, lock_commit = ready_repo(
+        tmp_path, protocol.split.calibration_guard, reality_payload(task)
+    )
+    original = reconstruct_episode_manifest(
+        SplitName.CALIBRATION,
+        task,
+        protocol,
+        policy_revision=POLICY,
+        code_commit=lock_commit,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "--allow-empty", "-qm", "later lock"],
+        check=True,
+    )
+
+    with pytest.raises(CalibrationGuardError, match="tag.*HEAD"):
+        generate_episode_manifest(
+            SplitName.CALIBRATION,
+            task,
+            protocol,
+            policy_revision=POLICY,
+            code_commit=lock_commit,
+            repo_root=repo,
+        )
+    reconstructed = reconstruct_episode_manifest(
+        SplitName.CALIBRATION,
+        task,
+        protocol,
+        policy_revision=POLICY,
+        code_commit=lock_commit,
+    )
+    assert reconstructed.to_dict() == original.to_dict()
 
 
 def test_locked_manifest_fails_closed_without_repo(protocol) -> None:

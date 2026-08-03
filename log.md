@@ -523,3 +523,72 @@ that experiments, negative results, decisions, and confidence can be audited.
   action occurred, and zero policy forwards or simulator steps ran. The last live-
   verified retained-disk price remains `$0.037/hr`; no current authenticated billing
   value was available in this run.
+
+### 2026-08-03 13:14 CEST — SETUP-012: complete laptop reset preflight and harden persisted provenance
+
+- **Stage:** setup / simulator preflight
+- **Question:** Can the complete first-task Discovery reset allocation be
+  constructed with the pinned LIBERO inputs off-GPU, and can the remaining
+  score/feature/failure artifacts be persisted without caller-invented hashes or
+  cross-split provenance contradictions?
+- **Pre-state / commit:** `703e96b`; the asset-free simulator attempt had failed
+  before initial-state loading, and no successful reset, policy action, outcome,
+  probe fit, score, or intervention had been observed.
+- **Method:** Built a disposable Python 3.12 laptop environment with
+  `hf-libero==0.1.4` and the exact LeRobot commit. The first build exposed a CMake
+  policy incompatibility in `egl-probe`; setting the documented minimum-policy
+  compatibility allowed the free dependency build to finish. Reverified the local
+  asset transfer archive SHA-256
+  `ad0626590c94ca126312ed52728d19d594a1f46e23c4185b6b6958cf349aa940`,
+  checked its paths/types, and installed its 586 files only into the disposable
+  environment. Ran every task-rank-1 Discovery init/condition reset in a fresh
+  runtime with macOS GLFW rendering. In parallel, independently implemented and
+  reviewed canonical persistence for full-Calibration feature references/cohorts
+  and Failure Event freezes/records. Added explicit path-and-length-framed hashes
+  over the frozen protocol files and scoring/feature source allowlist, then made the
+  real scoring adapter recompute and enforce them. Audits fixed canonical NaN
+  hashing, compressed-member size bounds, mandatory per-event freeze membership,
+  strict native freeze types, post-read file/layout checks, large-number handling,
+  and the formerly impossible Calibration-vs-Test commit comparison.
+- **Inputs and controls:** Pinned, free hf-libero/LeRobot packages; the verified
+  asset archive; committed task/config/manifest generation; fresh single-use
+  simulator instances; no checkpoint inference. The laptop used macOS/GLFW and is
+  therefore explicitly not a substitute for the frozen Linux/EGL RTX 5090 runtime.
+  The 40 reset cells used only their preregistered seeds and hash-balanced yaw
+  assignments. Persistence reviews used synthetic validated artifacts and hostile
+  schema/path/NaN/ZIP cases.
+- **Results:** All 40/40 first-task Discovery reset cells returned exit code zero,
+  settled for exactly ten no-op steps, produced an 8-value policy state, remained
+  in phase `pregrasp`, and passed every frozen reset-validity check. All reported
+  initial-success flags were false. No policy action was requested. The repository
+  passes 282 synthetic/integration contract tests plus Ruff lint/format,
+  byte-compilation, and whitespace checks. Feature and failure artifacts round-trip
+  through content-addressed no-pickle directories; score publication now rejects
+  stale repository configuration or computation-source links. Locked Test feature
+  construction allows its necessarily later collection commit but still requires
+  identical policy, base VLM, configuration hash, and scoring/feature source hash.
+- **Interpretation:** Simulator construction, asset completeness, task/object
+  resolution, condition application, settling, and reset validity now have positive
+  cross-platform evidence across the full 40-cell allocation. This materially
+  lowers—but does not eliminate—the GPU runtime risk. It says nothing about policy
+  success, perturbation failure range, internal geometry, prediction, or causality.
+- **Confidence:** high that the laptop reset-only allocation is internally valid
+  because all cells used the executable manifest and fail-closed checks; medium that
+  Linux/EGL will behave identically until the preserved GPU is resumed; zero update
+  to any research hypothesis or behavioral gate.
+- **Decision:** Preserve all registered thresholds and the selected first task.
+  Treat the laptop run only as setup evidence. Continue building exact allocation
+  receipts and Reality-Gate orchestration before any confirmatory rollout. Keep the
+  Vast instance stopped while authentication is unavailable and no GPU job can run.
+- **Next step:** Finish allocation-complete raw/score receipts and pure Reality-Gate
+  evaluation, commit/push them, then resume the retained instance only through an
+  authenticated session. On resume, reverify the preserved disk and asset manifest,
+  run the same reset under Linux/EGL, and isolate the first action rollout as a smoke
+  artifact until orchestration is frozen.
+- **Artifacts:** `src/mech_int_vla/{failure_artifacts,feature_artifacts,provenance}.py`,
+  hardened `failure_events.py`, `feature_pipeline.py`, and `scoring_runtime.py`,
+  their regression tests, this log, and the updated status/ignore rules.
+- **Compute / cost:** laptop-only CPU/simulator work. The GPU was never resumed,
+  stopped, deleted, or otherwise mutated in this run; no new authenticated price was
+  available. The last live-verified Vast prices remain `$0.037/hr` stopped storage
+  and `$0.344/hr` running (about 9.3x lower while stopped).

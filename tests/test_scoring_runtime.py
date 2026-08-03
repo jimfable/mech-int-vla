@@ -42,6 +42,8 @@ from mech_int_vla.scoring_runtime import (
     factual_replay_from_artifact,
 )
 
+ROOT = Path(__file__).parents[1]
+
 
 def _artifact(*, valid: bool = True, action_count: int = 2) -> RolloutArtifact:
     frame_count = action_count + 1 if action_count else 1
@@ -501,6 +503,7 @@ def _adapter(
         instrumentation,
         reset_seed=10100,
         original_condition=ConditionSpec("iid", "iid", 0, {}),
+        repo_root=ROOT,
         timer_backend=timer,
     )
     return adapter, episode, policy, instrumentation, timer
@@ -765,13 +768,7 @@ def test_adapter_runs_end_to_end_through_atomic_sidecar(
     result = score_replay_to_sidecar(
         adapter,
         adapter.factual,
-        ContentLinks(
-            "1" * 64,
-            "2" * 64,
-            adapter.probe.sha256(),
-            "4" * 64,
-            "5" * 64,
-        ),
+        adapter.expected_content_links,
         transforms=FROZEN_TRANSFORMS,
         output_root=tmp_path,
     )
@@ -783,6 +780,7 @@ def test_adapter_runs_end_to_end_through_atomic_sidecar(
 
 def test_sidecar_refuses_stale_raw_or_probe_content_links(tmp_path: Path) -> None:
     adapter, *_ = _adapter()
+    expected = adapter.expected_content_links
     with pytest.raises(ScoringRuntimeError, match="raw metadata hash link"):
         score_replay_to_sidecar(
             adapter,
@@ -791,8 +789,8 @@ def test_sidecar_refuses_stale_raw_or_probe_content_links(tmp_path: Path) -> Non
                 "0" * 64,
                 "2" * 64,
                 adapter.probe.sha256(),
-                "4" * 64,
-                "5" * 64,
+                expected.config_sha256,
+                expected.code_sha256,
             ),
             transforms=FROZEN_TRANSFORMS,
             output_root=tmp_path,
@@ -801,7 +799,41 @@ def test_sidecar_refuses_stale_raw_or_probe_content_links(tmp_path: Path) -> Non
         score_replay_to_sidecar(
             adapter,
             adapter.factual,
-            ContentLinks("1" * 64, "2" * 64, "3" * 64, "4" * 64, "5" * 64),
+            ContentLinks(
+                "1" * 64,
+                "2" * 64,
+                "3" * 64,
+                expected.config_sha256,
+                expected.code_sha256,
+            ),
+            transforms=FROZEN_TRANSFORMS,
+            output_root=tmp_path,
+        )
+    with pytest.raises(ScoringRuntimeError, match="config hash link"):
+        score_replay_to_sidecar(
+            adapter,
+            adapter.factual,
+            ContentLinks(
+                "1" * 64,
+                "2" * 64,
+                adapter.probe.sha256(),
+                "4" * 64,
+                expected.code_sha256,
+            ),
+            transforms=FROZEN_TRANSFORMS,
+            output_root=tmp_path,
+        )
+    with pytest.raises(ScoringRuntimeError, match="source hash link"):
+        score_replay_to_sidecar(
+            adapter,
+            adapter.factual,
+            ContentLinks(
+                "1" * 64,
+                "2" * 64,
+                adapter.probe.sha256(),
+                expected.config_sha256,
+                "5" * 64,
+            ),
             transforms=FROZEN_TRANSFORMS,
             output_root=tmp_path,
         )
@@ -821,5 +853,6 @@ def _adapter_from_parts(
         instrumentation,
         reset_seed=10100,
         original_condition=ConditionSpec("iid", "iid", 0, {}),
+        repo_root=ROOT,
         timer_backend=FakeTimer(),
     )

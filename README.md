@@ -34,14 +34,22 @@ adapter now bypasses the policy queue with explicit common noise, stores only th
 selected representation, binds raw/probe hashes before publication, and refuses
 validity-threshold drift. Probe artifacts use canonical no-pickle persistence, and
 validated raw/score pairs can be reduced into immutable Calibration references and
-deterministic M0/M1/M2 Calibration or Locked Test cohorts. The first
-simulator construction exposed a separately distributed LIBERO asset dependency
-before an initial state was loaded; its exact snapshot is pinned and
-content-verified. No successful simulator reset, policy action, success label,
-probe result, or intervention result has yet been observed. The Vast instance is
-deliberately stopped between concrete jobs to avoid idle GPU charges; its exact
-asset archive is ready locally, but resuming currently requires a usable signed-in
-Vast console or API session.
+deterministic M0/M1/M2 Calibration or Locked Test cohorts. Feature references,
+feature cohorts, and post-Discovery failure records now also have canonical,
+content-addressed, atomic, no-pickle persistence. Score links compute the frozen
+configuration and exact scoring/feature source hashes directly from repository
+bytes. Cross-split feature compatibility retains each collection commit while
+requiring identical policy, VLM, configuration, and computation source.
+
+A simulator-only macOS preflight using pinned hf-libero and the independently
+verified 586-file asset snapshot successfully reconstructed all 40 manifested
+task-rank-1 Discovery reset cells. Every cell settled for exactly ten no-op actions,
+produced the expected 8-D policy state, and passed the frozen penetration,
+stability, workspace, and initial-success validity checks. This is not the GPU
+Reality Gate: no policy action, terminal success label, probe result, score,
+intervention, or causal result has been observed. The Vast instance remains stopped
+between concrete jobs; resuming it currently requires a usable authenticated Vast
+console or API session.
 
 ## Reproducibility contract
 

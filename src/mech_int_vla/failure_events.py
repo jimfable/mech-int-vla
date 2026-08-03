@@ -492,6 +492,8 @@ class FailureEventResult:
                 isinstance(value, bool) or not isinstance(value, Integral)
             ):
                 raise FailureEventError(f"result {name} must be an integer or null")
+            if value is not None:
+                object.__setattr__(self, name, int(value))
         has_event = self.event_type is not None
         if has_event != (
             self.onset_step is not None and self.confirmation_step is not None
@@ -576,16 +578,23 @@ class FailureEventFreezeManifest:
     schema_version: int = 1
 
     def __post_init__(self) -> None:
+        if not isinstance(self.task, TaskIdentity) or not isinstance(
+            self.bounds, DiscoveryBoundsDerivation
+        ):
+            raise FailureEventError("freeze task and bounds must be validated types")
         keys = self.primary_placement_predicate_keys
         if (
-            not keys
+            not isinstance(keys, tuple)
+            or not keys
             or any(not isinstance(key, str) or not key for key in keys)
             or keys != tuple(sorted(set(keys)))
         ):
             raise FailureEventError(
                 "primary placement predicate keys must be non-empty, sorted, unique"
             )
-        if any(not isinstance(item, FailureEventResult) for item in self.annotations):
+        if not isinstance(self.annotations, tuple) or any(
+            not isinstance(item, FailureEventResult) for item in self.annotations
+        ):
             raise FailureEventError("freeze annotations must be validated results")
         annotation_ids = tuple(item.episode_id for item in self.annotations)
         expected_ids = tuple(item.episode_id for item in self.bounds.expected_artifacts)
@@ -595,7 +604,8 @@ class FailureEventFreezeManifest:
             )
         audit = self.video_audit_episode_ids
         if (
-            any(not isinstance(item, str) or not item for item in audit)
+            not isinstance(audit, tuple)
+            or any(not isinstance(item, str) or not item for item in audit)
             or audit != expected_ids
         ):
             raise FailureEventError(
@@ -613,11 +623,18 @@ class FailureEventFreezeManifest:
                 raise FailureEventError(
                     "freeze annotation validity/success disagrees with bounds provenance"
                 )
-        if _GIT_SHA1.fullmatch(self.implementation_commit) is None:
+        if (
+            not isinstance(self.implementation_commit, str)
+            or _GIT_SHA1.fullmatch(self.implementation_commit) is None
+        ):
             raise FailureEventError(
                 "implementation_commit must be a lowercase 40-character Git SHA"
             )
-        if self.reality_gate_tag != "prereg-locked-v1" or self.schema_version != 1:
+        if (
+            self.reality_gate_tag != "prereg-locked-v1"
+            or type(self.schema_version) is not int
+            or self.schema_version != 1
+        ):
             raise FailureEventError("unsupported failure-event freeze version or tag")
 
     def to_dict(self) -> dict[str, Any]:

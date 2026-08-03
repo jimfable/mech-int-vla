@@ -212,6 +212,29 @@ class CohortIdentity:
             "code_sha256": self.code_sha256,
         }
 
+    def is_cross_split_compatible(self, other: object) -> bool:
+        """Compare immutable execution inputs while retaining distinct commits.
+
+        Calibration is collected at ``prereg-locked-v1`` and Locked Test at the
+        later ``calibration-locked-v1`` commit.  Requiring the raw collection
+        commits to be equal would therefore make every legitimate Locked Test
+        cohort impossible.  The commits remain recorded in each cohort; this
+        compatibility relation instead freezes the policy, base VLM, protocol
+        configuration, and scoring-source content across the split boundary.
+        """
+
+        return isinstance(other, CohortIdentity) and (
+            self.policy_revision,
+            self.base_vlm_revision,
+            self.config_sha256,
+            self.code_sha256,
+        ) == (
+            other.policy_revision,
+            other.base_vlm_revision,
+            other.config_sha256,
+            other.code_sha256,
+        )
+
 
 @dataclass(frozen=True, order=True)
 class EpisodeSourceHashes:
@@ -294,7 +317,10 @@ def _reference_state_sha256(
             probe_norm.mean_norm,
         )
         digest.update(_canonical_json({"identity": identity}))
-        digest.update(np.asarray(coverage.vector, dtype="<f8").tobytes(order="C"))
+        vector = np.array(coverage.vector, dtype="<f8", copy=True, order="C")
+        if np.isnan(vector).any():
+            vector[np.isnan(vector)] = np.nan
+        digest.update(vector.tobytes(order="C"))
     return digest.hexdigest()
 
 
@@ -1238,7 +1264,9 @@ def build_locked_test_features(
         )
     if pairs[0].task_identity != reference_bundle.task_identity:
         raise FeaturePipelineError("Locked Test task differs from reference bundle")
-    if pairs[0].cohort_identity != reference_bundle.cohort_identity:
+    if not pairs[0].cohort_identity.is_cross_split_compatible(
+        reference_bundle.cohort_identity
+    ):
         raise FeaturePipelineError(
             "Locked Test policy/config/code cohort differs from reference bundle"
         )

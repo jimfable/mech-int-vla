@@ -329,6 +329,7 @@ def _paired_cohort(
     base_inits: tuple[int, ...] = (10, 10, 11),
     unavailable_transform: int | None = None,
     unavailable_intervention_draw: int | None = None,
+    code_commit: str = "c" * 40,
 ) -> tuple[list[RolloutArtifact], list[LoadedScoringSidecar]]:
     raws = []
     scores = []
@@ -342,6 +343,7 @@ def _paired_cohort(
             base_init=base_init,
             success=success,
             episode_offset=float(index + 1),
+            code_commit=code_commit,
         )
         raws.append(raw)
         scores.append(
@@ -453,12 +455,14 @@ def test_locked_test_uses_full_bundle_and_test_label_cannot_change_features() ->
         probe=probe,
         successes=(False,),
         base_inits=(30,),
+        code_commit="d" * 40,
     )
     successful_raws, successful_scores = _paired_cohort(
         split="locked_test",
         probe=probe,
         successes=(True,),
         base_inits=(30,),
+        code_commit="d" * 40,
     )
     failed = build_locked_test_features(failed_raws, failed_scores, probe, bundle)
     successful = build_locked_test_features(
@@ -471,6 +475,8 @@ def test_locked_test_uses_full_bundle_and_test_label_cannot_change_features() ->
     assert successful.records[0].terminal_failure_label is False
     assert failed.reference_bundle_sha256 == bundle.metadata_sha256
     assert successful.reference_bundle_sha256 == bundle.metadata_sha256
+    assert failed.cohort_identity.code_commit == "d" * 40
+    assert bundle.cohort_identity.code_commit == "c" * 40
 
 
 def test_locked_test_rejects_reference_probe_task_and_cohort_mismatch() -> None:
@@ -511,6 +517,15 @@ def test_locked_test_rejects_reference_probe_task_and_cohort_mismatch() -> None:
     wrong_policy_score = _score_sidecar(wrong_policy, probe, episode_offset=1.0)
     with pytest.raises(FeaturePipelineError, match="cohort differs"):
         build_locked_test_features([wrong_policy], [wrong_policy_score], probe, bundle)
+
+    wrong_source_score = _score_sidecar(
+        test_raws[0],
+        probe,
+        episode_offset=1.0,
+        code_sha256=_sha("different-scoring-source"),
+    )
+    with pytest.raises(FeaturePipelineError, match="cohort differs"):
+        build_locked_test_features(test_raws, [wrong_source_score], probe, bundle)
 
 
 def test_one_to_one_duplicates_and_split_fail_before_reduction() -> None:

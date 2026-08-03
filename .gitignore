@@ -10,6 +10,9 @@ __pycache__/
 htmlcov/
 outputs/
 artifacts/raw/
+artifacts/scores/
+artifacts/features/
+artifacts/failure-events/
 artifacts/cache/
 *.mp4
 *.npy

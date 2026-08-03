@@ -19,6 +19,7 @@ from collections import deque
 from collections.abc import Mapping
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -454,6 +455,7 @@ class SmolVLAScoringAdapter:
         *,
         reset_seed: int,
         original_condition: ConditionSpec,
+        repo_root: str | Path,
         timer_backend: Any | None = None,
     ) -> None:
         self.episode = episode
@@ -464,6 +466,7 @@ class SmolVLAScoringAdapter:
         self.instrumentation = instrumentation
         self.reset_seed = int(reset_seed)
         self.original_condition = original_condition
+        self.expected_content_links = self._content_links(repo_root)
         self._active_transform: ScoringTransform | None = None
         self._original_activation_by_noise: dict[int, Any] = {}
         self._peak_baseline: int | None = None
@@ -471,6 +474,22 @@ class SmolVLAScoringAdapter:
         torch = _torch_module()
         self.device = self._policy_device(torch)
         self.timer = timer_backend or _DefaultTimerBackend(self.device, torch)
+
+    def _content_links(self, repo_root: str | Path) -> ContentLinks:
+        from .failure_events import ArtifactIdentity
+        from .provenance import content_links_for
+
+        identity = ArtifactIdentity(
+            episode_id=self.artifact.episode_id,
+            metadata_sha256=self.artifact.hashes.metadata_sha256,
+            trajectory_sha256=self.artifact.hashes.trajectory_sha256,
+        )
+        try:
+            return content_links_for(identity, self.probe, repo_root)
+        except ValueError as exc:
+            raise ScoringRuntimeError(
+                f"could not bind score links to repository bytes: {exc}"
+            ) from exc
 
     def _validate_runtime(self) -> None:
         episode = self.episode
@@ -803,6 +822,10 @@ class SmolVLAScoringAdapter:
             raise ScoringRuntimeError("score raw trajectory hash link is stale")
         if links.probe_sha256 != self.probe.sha256():
             raise ScoringRuntimeError("score probe hash link is stale")
+        if links.config_sha256 != self.expected_content_links.config_sha256:
+            raise ScoringRuntimeError("score config hash link is stale")
+        if links.code_sha256 != self.expected_content_links.code_sha256:
+            raise ScoringRuntimeError("score source hash link is stale")
 
     def policy_queue_state(self) -> Any:
         try:

@@ -825,3 +825,23 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Compute / cost:** no GPU work or rollout was launched during backup. The Vast
   instance stayed running while the transfer and verification were active and is
   eligible for the retained-storage rate only after the explicit stop check.
+
+### 2026-08-03 17:47 CEST — COST-001: stop the idle Vast instance safely
+
+- **Stage:** post-backup cost control
+- **Pre-stop guards:** the authoritative yaw Supervisor was `EXITED`; no
+  `runtime_cli` writer, rollout process, or GPU compute application remained; all
+  four local transfer streams had exited zero; the 126-file inventory and local
+  artifact-loader audit had passed; and `artifacts/raw-backup-ready/` was present.
+  No Locked Test data was accessed and no remote artifact was deleted or changed.
+- **Action:** issued only the reversible Vast API `stop_instance(46677323)` call.
+  The subsequent read-only API state converged to `actual_status=exited`,
+  `cur_state=stopped`, `intended_status=stopped`, and `next_state=stopped`.
+  No destroy, delete, recycle, terminate, or reboot operation was issued.
+- **Cost evidence:** the stopped instance reports `storage_total_cost`
+  `$0.0370370370/hr`; the same instance's running `dph_total` is `$0.3437037037/hr`.
+  Thus retained storage is about 9.28x cheaper than running, consistent with the
+  previously verified rate and not an assumed factor.
+- **Decision:** leave the preserved disk stopped while no concrete GPU job is
+  authorized. Resume only after a future explicit calibration plan and the same
+  read-only disk/asset checks; never recycle the instance.

@@ -1017,3 +1017,52 @@ that experiments, negative results, decisions, and confidence can be audited.
   administrative log checkpoint is deliberately after the lock commit, so any
   future Calibration attempt must run from the tagged lock worktree and first
   pass the guard there. No Calibration or Locked Test data was accessed.
+
+### 2026-08-03 21:34 CEST — CALIBRATION-RESUME-001: restart, tag sync, and guarded runner preparation
+
+- **Stage:** provider resume and protected Calibration preparation; no Calibration
+  outcome or Locked Test access yet.
+- **Provider state:** Reissued only the reversible Vast `start_instance(46677323)`
+  action after the prior resource-queue response. Vast accepted it with
+  `success=true`; read-only status is now `actual_status=running`,
+  `cur_state=running`, `intended_status=running`, and `next_state=running`.
+  Both the confirmed proxy route `ssh -p 37323 root@ssh9.vast.ai` and the direct
+  route are reachable. The RTX 5090 is visible with 2 MiB used and 0% utilization
+  before work. Running price remains `$0.3437037037/hr`; no stop is appropriate
+  while the concrete Calibration job is active.
+- **Remote audit:** Vast's required `/etc/vast-agents-guide.md` was read in
+  full. The preserved `/workspace/run-bab7e6e` checkout is clean at Discovery
+  commit `b491dc7`; the three old Discovery Supervisor programs are all
+  `STOPPED` and were not restarted, so no remote rollout was duplicated,
+  overwritten, or reordered. Discovery artifacts and receipts remain unchanged.
+- **Immutable execution checkout:** Created a new, non-overlapping
+  `/workspace/calibration-locked` checkout from the transferred Git bundle
+  (bundle SHA-256
+  `8f292320332cd0446c2dd22a3a7532aa4adedca1aa37412745c6715b850c8e54`). Its
+  `HEAD` and `prereg-locked-v1` both equal
+  `18d64941bc8c899b06306fbec21d1c8d2c08f2ea`; the worktree is clean. The local
+  exact-tag `assert_calibration_ready` guard passed and produced the canonical
+  160-episode manifest SHA
+  `6f5c7a5baa71eadfda1539e756d42ea6cec575316b6ab1245be7d3c5abfe3c3f`.
+- **Portability finding:** Re-running the unchanged strict guard on Linux
+  CPython 3.12.13 differs from the local macOS CPython 3.12.11 Wilson interval
+  at two last-bit float values (~1e-17), so it rejects the otherwise identical
+  lock as “dynamic-range receipt disagrees with recomputation.” This is a
+  numerical guard portability defect, not an altered result or a protocol
+  decision. The original tag was not moved. A hash-bound local guard-authority
+  receipt, lock payload, full manifest, and runtime scripts are retained for
+  audit; the remote runner additionally verifies tag/tree/lock/manifest hashes
+  and uses the pure manifest reconstruction. No Locked Test data is inspected.
+- **GPU/EGL smoke:** The tag checkout's real `discovery-reset` for the first
+  manifested task returned a valid reset through Linux/EGL with the expected
+  10 settle steps and no GPU/runtime error. The legacy policy-loader probe did
+  not emit a JSON receipt, but left no persistent process and the GPU returned
+  to 2 MiB/0%; the per-cell runner will load the pinned offline policy inside
+  the Supervisor-managed child and fail closed on any error.
+- **Decision:** Register one new `autostart=false`, `autorestart=false`
+  Supervisor program (`mech_vla_calibration`) in the new checkout only. It
+  serializes the exact 160 Calibration cells, resumes only byte/provenance-
+  validated existing cells, refuses staging ambiguity and overwrite, and writes
+  a completion receipt. Start it only after this checkpoint is committed and
+  the final read-only no-active-job check passes; do not start any old Discovery
+  service and do not instantiate Locked Test.

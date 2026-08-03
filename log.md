@@ -1160,6 +1160,21 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** No restart, duplicate, parallelization, overwrite, or protocol
   change. Leave the concrete GPU job running and continue read-only monitoring.
 
+### 2026-08-04 01:37 CEST — CALIBRATION-RUNNING-006: overnight progress at 97/160
+
+- **Read-only audit:** Vast 46677323 remains `running`; the serial Supervisor is
+  healthy, GPU telemetry is active, the locked checkout is clean at
+  `18d64941bc8c899b06306fbec21d1c8d2c08f2ea`, and the old Discovery services
+  remain stopped.
+- **Progress:** 97 Calibration artifact directories (manifest indices 0–96)
+  are complete and receipt-validated. There are zero staging directories and no
+  completion receipt yet. Index 97 (`init22-cell1`) is the sole active child.
+  Recent valid artifacts include index 96 (`success=true`, 155 steps; metadata
+  `5eb580e4…`, trajectory `4295febe…`).
+- **Decision:** Leave the authoritative process untouched; no duplication,
+  reordering, overwrite, or Locked-Test access. Continue monitoring until the
+  160-cell receipt appears.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

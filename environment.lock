@@ -21,6 +21,8 @@ lerobot_commit = "30da8e687a6dfc617fcd94afc367ac7071c376ce"
 libero_repository = "https://github.com/huggingface/LIBERO.git"
 libero_commit = "8561c60eea2fb93096146f240194649df73d8b1e"
 libero_distribution = "hf-libero==0.1.4"
+libero_assets_repo = "lerobot/libero-assets"
+libero_assets_revision = "0b3ea86be5fe169d0fd036ae63d1070ec09e90f6"
 
 python_version = "3.12.13"
 torch_version = "2.11.0+cu130"

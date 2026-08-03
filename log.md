@@ -173,3 +173,45 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Artifacts:** `src/mech_int_vla/snapshots.py`, `tests/test_snapshots.py`.
 - **Compute / cost:** approximately one failed Python construction process; zero
   policy forward passes and zero simulator steps.
+
+### 2026-08-03 10:40 CEST — SETUP-005: strict policy load passes; asset bundle blocked
+
+- **Stage:** setup
+- **Question:** After correcting registered config dispatch, does the entire pinned
+  policy load strictly and can the first real LIBERO Discovery reset initialize?
+- **Pre-state / commit:** `5d2911b99e3e937025eb039c425304bf76dfa5de`;
+  remote working tree reconstructed exactly and clean from the committed archive.
+- **Method:** Re-ran the offline `load-policy` command on CUDA, then initialized
+  hf-libero's default noninteractive path config and attempted Discovery task rank 1,
+  init state 0, IID condition 0. Inspected only setup exceptions. Queried the public
+  LIBERO asset repository metadata and froze its exact current revision before any
+  successful simulator construction.
+- **Inputs and controls:** Policy `31d453f7...`, base VLM `7b375e1b...`, asset bundle
+  `lerobot/libero-assets@0b3ea86be5fe169d0fd036ae63d1070ec09e90f6`.
+  No policy forward/action was requested. The simulator attempt failed while loading
+  its XML arena, before a task initial state, observation, success value, or outcome
+  was available.
+- **Results:** Strict loading succeeded from local files. Runtime settings were
+  `num_steps=10`, `chunk_size=50`, `n_action_steps=1`, and `empty_cameras=1`; all
+  non-count normalization tensors for `observation.state` had shape `(8,)`, while
+  the original checkpoint metadata was `(6,)` and corrected runtime metadata `(8,)`.
+  The first LIBERO construction could not find
+  `assets/scenes/libero_study_base_style.xml`. hf-libero attempted its unpinned
+  default Hub download, but the provider's outbound HTTPS timed out, then raised
+  `FileNotFoundError`. The public asset snapshot contains 586 repository entries and
+  approximately 422 MB according to Hub metadata.
+- **Interpretation:** Model/runtime integration is verified through strict weight and
+  processor construction. LIBERO needs its separately distributed public assets
+  staged offline, just as the model needed offline staging; this is not evidence
+  about the task or policy.
+- **Confidence:** high for strict load and asset cause because both emitted explicit
+  checks/tracebacks; no confidence update about any research hypothesis is possible.
+- **Decision:** Pin asset revision `0b3ea86...`, download it on the laptop where Hub
+  access is reliable, hash the transfer, and place it at hf-libero's configured asset
+  path. Keep the same first Discovery manifest cell.
+- **Next step:** Stage the exact asset snapshot, retry task 1/init 0/IID reset, then
+  either repair source-level API mismatches prospectively or start the Reality Gate.
+- **Artifacts:** `environment.lock`; remote strict-load stdout and asset traceback
+  retained in the task transcript pending structured capture.
+- **Compute / cost:** one full model construction/weight load, zero forward passes;
+  one failed simulator construction, zero simulator control steps.

@@ -17,9 +17,13 @@ is in [`PREREG.md`](PREREG.md). Changes to the protocol are recorded only in
 
 ## Current status
 
-Pre-rollout setup and preregistration. No policy rollout, success label, probe
-result, or intervention result had been observed when the initial preregistration
-was written.
+The exact CUDA runtime and checkpoint pass strict offline loading, the five causal
+capture sites pass synthetic tests, and the deterministic single-episode executor
+is implemented. The first simulator construction exposed a separately distributed
+LIBERO asset dependency before an initial state was loaded; its exact snapshot is
+now pinned and content-verified. No successful simulator reset, policy action,
+success label, probe result, or intervention result has yet been observed. The Vast
+instance is deliberately stopped between concrete jobs to avoid idle GPU charges.
 
 ## Reproducibility contract
 
@@ -33,3 +37,38 @@ was written.
   commit.
 - Frames are never treated as independent experimental units. Episode-level
   summaries are primary and uncertainty is clustered by base initialization.
+
+## Verification and rollout entry points
+
+Install the lightweight local package and run the synthetic contract suite:
+
+```bash
+python -m pip install -e '.[test]'
+pytest
+```
+
+On the pinned GPU runtime, exact snapshots default to network-free resolution:
+
+```bash
+python -m mech_int_vla.runtime_cli snapshots \
+  --environment-lock environment.lock --cache-dir /workspace/hf-cache
+python -m mech_int_vla.runtime_cli load-policy \
+  --environment-lock environment.lock --cache-dir /workspace/hf-cache
+```
+
+Discovery execution is intentionally split into a reset-only compatibility check
+and an atomic full rollout. Both select a cell from the committed manifest; the
+full rollout additionally refuses a dirty worktree or an existing artifact:
+
+```bash
+python -m mech_int_vla.runtime_cli discovery-reset \
+  --repo-root "$PWD" --task-rank 1 --init-id 0 --condition-index 0
+python -m mech_int_vla.runtime_cli discovery-rollout \
+  --repo-root "$PWD" --environment-lock environment.lock \
+  --cache-dir /workspace/hf-cache --task-rank 1 --init-id 0 --condition-index 0
+```
+
+Large raw episode arrays are excluded from Git. Content-addressed input manifests
+and verification summaries live under `artifacts/manifests/`; completed run
+metadata records the exact code, policy, task, condition, seeds, validity, and
+terminal outcome alongside `trajectory.npz`.

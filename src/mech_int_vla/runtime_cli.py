@@ -11,8 +11,10 @@ from typing import Any
 import numpy as np
 
 from .config import ConditionSpec, SplitName, load_protocol_config
+from .instrumentation import SmolVLAInstrumentation
 from .libero_runtime import RawLiberoEpisode
 from .manifest import generate_episode_manifest
+from .rollout import run_single_episode
 from .snapshots import (
     load_locked_smolvla,
     load_model_input_lock,
@@ -37,6 +39,18 @@ def _head_commit(root: Path) -> str:
         text=True,
     )
     return process.stdout.strip()
+
+
+def _require_clean_worktree(root: Path) -> None:
+    process = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    if process.stdout.strip():
+        raise RuntimeError("episode execution requires a clean committed worktree")
 
 
 def _snapshots(args: argparse.Namespace) -> int:
@@ -156,6 +170,78 @@ def _discovery_reset(args: argparse.Namespace) -> int:
     return 0
 
 
+def _discovery_rollout(args: argparse.Namespace) -> int:
+    root = args.repo_root.resolve()
+    _require_clean_worktree(root)
+    config = load_protocol_config(root / "configs")
+    task = config.task_order.tasks[args.task_rank - 1]
+    lock = load_model_input_lock(args.environment_lock)
+    manifest = generate_episode_manifest(
+        SplitName.DISCOVERY,
+        task,
+        config,
+        policy_revision=lock.policy_revision,
+        code_commit=_head_commit(root),
+    )
+    matches = [
+        episode
+        for episode in manifest.episodes
+        if episode.base_init_state_id == args.init_id
+        and episode.condition_index == args.condition_index
+    ]
+    if len(matches) != 1:
+        raise ValueError("no unique manifested Discovery rollout cell")
+    episode_spec = matches[0]
+    condition = ConditionSpec(
+        episode_spec.condition_name,
+        episode_spec.condition_family,
+        episode_spec.condition_index,
+        episode_spec.condition_parameters,
+    )
+    snapshots = resolve_snapshot_paths(
+        args.environment_lock,
+        cache_dir=args.cache_dir,
+        local_files_only=True,
+    )
+    policy_runtime = load_locked_smolvla(snapshots, device=args.device)
+    episode = RawLiberoEpisode.create(
+        task,
+        base_init_state_id=args.init_id,
+        execution=config.split.policy_execution,
+        validity=config.perturbations.validity,
+    )
+    instrumentation = SmolVLAInstrumentation(policy_runtime.policy)
+    try:
+        result = run_single_episode(
+            policy_runtime,
+            episode,
+            instrumentation,
+            episode_spec,
+            condition,
+            artifact_root=args.artifact_root,
+        )
+        print(
+            json.dumps(
+                {
+                    "episode_id": episode_spec.episode_id,
+                    "artifact_path": result.artifact_path,
+                    "status": result.status,
+                    "valid_reset": result.valid_reset,
+                    "success": result.success,
+                    "terminated": result.terminated,
+                    "truncated": result.truncated,
+                    "control_steps": result.control_steps,
+                },
+                default=_json_default,
+                sort_keys=True,
+            )
+        )
+    finally:
+        instrumentation.remove()
+        episode.close()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -192,6 +278,22 @@ def build_parser() -> argparse.ArgumentParser:
     reset.add_argument("--init-id", type=int, choices=range(10), required=True)
     reset.add_argument("--condition-index", type=int, choices=range(4), default=0)
     reset.set_defaults(handler=_discovery_reset)
+
+    rollout = subparsers.add_parser(
+        "discovery-rollout",
+        help="execute and atomically record one manifested Discovery episode",
+    )
+    rollout.add_argument("--repo-root", type=Path, default=Path.cwd())
+    rollout.add_argument(
+        "--environment-lock", type=Path, default=Path("environment.lock")
+    )
+    rollout.add_argument("--cache-dir", type=Path)
+    rollout.add_argument("--device", default="cuda")
+    rollout.add_argument("--artifact-root", type=Path, default=Path("artifacts/raw"))
+    rollout.add_argument("--task-rank", type=int, choices=(1, 2, 3), default=1)
+    rollout.add_argument("--init-id", type=int, choices=range(10), required=True)
+    rollout.add_argument("--condition-index", type=int, choices=range(4), default=0)
+    rollout.set_defaults(handler=_discovery_rollout)
     return parser
 
 

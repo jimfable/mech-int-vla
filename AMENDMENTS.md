@@ -271,7 +271,7 @@ left to environment resolution.
   arithmetic and replay failure behavior are fixed before any outcome. Remaining
   model/runtime compatibility risk is handled by fail-closed replay and publication
   of masks, hashes, raw primitives, and both logical and physical costs.
-- **Implementing commit:** `PENDING_FUTURE_COMMIT`
+- **Implementing commit:** `882d753f83e930361e71e6e51ce63e633d667355`
 
 ### 2026-08-03 — Freeze causal matching and aggregation details
 

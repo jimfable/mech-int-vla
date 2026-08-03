@@ -457,3 +457,69 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Compute / cost:** laptop-only synthetic tests. Vast remained stopped at the
   verified `$0.037/hr` retained-disk rate versus `$0.344/hr` running (about 9.3x
   lower); zero new model forwards and zero simulator control steps.
+
+### 2026-08-03 12:46 CEST — SETUP-011: bind scoring to the pinned runtime and artifacts
+
+- **Stage:** setup
+- **Question:** Can the frozen scorer be connected to the exact SmolVLA/LIBERO
+  runtime, fitted-probe artifact, and Calibration/Locked Test feature pipeline
+  without allowing compatible source drift or stale provenance links?
+- **Pre-state / commit:** `5500fcd569f81ea8b6fa7a5825e0433c86d2fbb7`;
+  the dependency-light scorer and feature arithmetic were frozen, but the concrete
+  private-policy bridge, probe persistence, and artifact-to-feature integration
+  were not yet committed. No valid reset, action, label, probe fit, or intervention
+  result had been observed.
+- **Method:** Implemented and independently audited the concrete replay adapter
+  against LeRobot commit `30da8e687a6dfc617fcd94afc367ac7071c376ce`.
+  It creates explicit local-generator float32 noise of shape
+  `(1,50,max_action_dim)`, invokes only `_get_action_chunk`, verifies the exact
+  prefix-plus-ten-denoising call sequence, captures only the selected candidate,
+  preserves the first factual activation for every reused noise object, applies
+  rank-two minimum-norm circular shifts, postprocesses all 50 actions, and records
+  synchronized per-call costs. Added canonical content-addressed `probe.json`
+  publication/loading and strict raw/score pairing into immutable full-Calibration
+  reference bundles plus deterministic M0/M1/M2 feature cohorts. The audit then
+  added three fail-closed guards: the complete 487-file LeRobot Python tree hash,
+  every frozen counterfactual-validity field, and raw/probe hash linkage before a
+  sidecar can be published.
+- **Inputs and controls:** Exact pinned source tree from the detached v0.6 commit;
+  synthetic validated rollouts, sidecars, probes, simulator snapshots, action
+  queues, RNG streams, activations, transforms, and provenance hashes. The source
+  fingerprint uses path- and length-framed Python bytes and equals
+  `79603648ff8d9889072449099da6e60b6a92fe0da84108e2bae1dc765b217ecd`.
+  Probe loading rejects pickle, duplicate/unknown JSON keys, noncanonical bytes,
+  symlinks, overwrites, and digest mismatches. Calibration coverage and robust probe
+  norms exclude the query episode and base-init group; Locked Test uses only the
+  supplied frozen Calibration references.
+- **Results:** The private bridge reaches the atomic sidecar writer end-to-end in a
+  dependency-light fake and refuses RTC/eval/shape/call-phase/queue/RNG/source/
+  validity/probe/link drift. Feature integration validates all array names, dtypes,
+  masks, exact score seeds, costs, task/cohort identities, outcomes, cadence, and
+  one-to-one content hashes before reduction. The repository passes 248 synthetic
+  tests plus Ruff lint/format, byte-compilation, and whitespace checks. Commit
+  `882d753f83e930361e71e6e51ce63e633d667355` is pushed publicly.
+- **Interpretation:** The remaining uncertainty is empirical/runtime reality rather
+  than an unbound software contract. The real RTX 5090 must still establish pixel-
+  exact LIBERO replay, actual hidden widths/hook phases, CUDA cost readings, and a
+  successful first reset/action. No scientific result can yet be inferred.
+- **Confidence:** high for local provenance, persistence, validation, and numerical
+  integration; medium for the private pinned policy path until the first real
+  CUDA call; zero update to the research hypotheses.
+- **Decision:** Keep the same first manifested Discovery cell and all frozen
+  thresholds. Do not weaken source, validity, replay, or hash checks to obtain a
+  sidecar. Continue preparing persistence/orchestration locally while the retained
+  GPU cannot be safely resumed.
+- **Next step:** Resume instance 46677323 only through an authenticated Vast session,
+  verify the preserved disk, transfer and rehash the already verified asset archive,
+  then repeat task rank 1/init 0/IID reset and rollout. In parallel, add atomic
+  feature-reference persistence and allocation-complete CLI orchestration without
+  opening Locked Test.
+- **Artifacts:** `src/mech_int_vla/{scoring_runtime,feature_pipeline,probes,scoring,snapshots}.py`,
+  `environment.lock`, their regression tests, `AMENDMENTS.md`, and this log entry.
+- **Compute / cost:** laptop-only synthetic tests. Both available Vast console paths
+  were visibly signed out and no local Vast API configuration was present; the
+  direct and proxy SSH endpoints still rejected access as expected for the stopped
+  instance. No credentials were inspected or transmitted, no resume/stop/delete
+  action occurred, and zero policy forwards or simulator steps ran. The last live-
+  verified retained-disk price remains `$0.037/hr`; no current authenticated billing
+  value was available in this run.

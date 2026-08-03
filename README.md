@@ -28,13 +28,20 @@ tested against synthetic data. Deterministic factual replay, the six frozen
 counterfactual score transforms, per-draw probe interventions, exact numerical
 M0/M1/M2 reductions, leakage-safe coverage features, and task-specific failure
 event annotation are also executable and content-addressed. The lock guards verify
-the checkpoint and frozen analysis artifacts by content and require exact Locked
-Test coverage. The first
+the checkpoint, the complete pinned LeRobot Python source tree, and frozen analysis
+artifacts by content and require exact Locked Test coverage. The private scoring
+adapter now bypasses the policy queue with explicit common noise, stores only the
+selected representation, binds raw/probe hashes before publication, and refuses
+validity-threshold drift. Probe artifacts use canonical no-pickle persistence, and
+validated raw/score pairs can be reduced into immutable Calibration references and
+deterministic M0/M1/M2 Calibration or Locked Test cohorts. The first
 simulator construction exposed a separately distributed LIBERO asset dependency
 before an initial state was loaded; its exact snapshot is pinned and
 content-verified. No successful simulator reset, policy action, success label,
 probe result, or intervention result has yet been observed. The Vast instance is
-deliberately stopped between concrete jobs to avoid idle GPU charges.
+deliberately stopped between concrete jobs to avoid idle GPU charges; its exact
+asset archive is ready locally, but resuming currently requires a usable signed-in
+Vast console or API session.
 
 ## Reproducibility contract
 

@@ -297,3 +297,50 @@ that experiments, negative results, decisions, and confidence can be audited.
   same first IID reset, then one complete Discovery episode if reset validity passes.
 - **Artifacts:** `src/mech_int_vla/rollout.py`, `tests/test_rollout.py`.
 - **Compute / cost:** laptop-only synthetic tests while the GPU remained inactive.
+
+### 2026-08-03 11:39 CEST — SETUP-008: freeze downstream analysis machinery before outcomes
+
+- **Stage:** setup
+- **Question:** Can the preregistered probe, failure-predictor, and confirmatory
+  evaluation rules be made executable before any real simulator outcome is seen?
+- **Pre-state / commit:** `9e12e58cc6b7c606815f6d85f78c8e6f8e105a63`; no
+  successful simulator reset or policy action had occurred.
+- **Method:** Independently implemented and then centrally reviewed three
+  dependency-light analysis modules using synthetic arrays only. The probe module
+  uses sorted init-ID group folds, episode-equal weighted centered ridge fits, the
+  frozen alpha grid, symmetry-aware circular MAE, and the fixed five-candidate
+  one-standard-error preference. The predictor module uses outcome-independent
+  init-ID group folds, per-episode total training weight one, weighted-median
+  imputation with an indicator for every feature, the exact logistic/HGB candidate
+  grids, M1-only raw OOF log-loss selection, model-specific OOF Platt maps, and
+  full-Calibration refits. The evaluator implements the paired episode-level
+  primary estimand, whole-init cluster percentile bootstrap, secondary metrics,
+  alarm calibration, lead time, Wilson intervals, and explicit decision flags.
+- **Inputs and controls:** Deterministic synthetic labels, features, activations,
+  episode IDs, and base-init groups. No protected artifact path, model checkpoint,
+  simulator, real success label, or Locked Test data was read.
+- **Results:** The full repository suite passes 96 tests. Ruff lint and formatting,
+  byte-compilation, and whitespace checks also pass. Probe artifacts expose
+  canonical JSON/SHA-256 metadata; predictor artifacts expose data/pickle hashes,
+  folds, preprocessing, coefficients where applicable, OOF metrics, and the
+  black-box ceiling flag. Evaluation inputs fail closed on duplicate/unpaired
+  episodes, malformed probabilities or cadence, missing failure events, and
+  insufficient bootstrap clusters.
+- **Interpretation:** Major analytic degrees of freedom are now encoded before
+  outcomes: candidate/hyperparameter selection cannot be improvised after observing
+  Discovery or Calibration behavior, and the headline Locked Test decision rule is
+  an executable paired test rather than a retrospective analysis choice.
+- **Confidence:** high for the encoded arithmetic and data-integrity rules because
+  edge cases and deterministic replay are covered by unit tests; medium for the
+  future feature-assembly boundary until a real rollout artifact exercises it.
+- **Decision:** Commit and push these modules before resuming the GPU. Build the
+  remaining feature-assembly and causal-pair utilities against these frozen APIs,
+  without accessing Locked Test conditions.
+- **Next step:** transfer the verified LIBERO assets and current commit when the
+  stopped GPU can be scheduled, repeat the identical Discovery reset, and in
+  parallel implement artifact-to-analysis assembly and causal matching contracts.
+- **Artifacts:** `src/mech_int_vla/probes.py`,
+  `src/mech_int_vla/predictors.py`, `src/mech_int_vla/evaluation.py`, their three
+  test modules, and the optional `modeling` dependency in `pyproject.toml`.
+- **Compute / cost:** laptop-only synthetic tests while the GPU remained
+  inactive/unreachable; no model forward passes or simulator steps.

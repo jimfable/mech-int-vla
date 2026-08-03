@@ -13,7 +13,8 @@ dependencies = ["numpy>=2.0,<2.3", "PyYAML>=6.0,<7"]
 mech-int-vla-runtime = "mech_int_vla.runtime_cli:main"
 
 [project.optional-dependencies]
-test = ["pytest>=8.0,<10"]
+modeling = ["scikit-learn>=1.9,<2"]
+test = ["pytest>=8.0,<10", "scikit-learn>=1.9,<2"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

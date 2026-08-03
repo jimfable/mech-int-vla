@@ -1090,3 +1090,25 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** Keep the instance running only for the resumed concrete
   Calibration job. Do not rerun cell 0 and do not touch any old Discovery
   service. The immutable `prereg-locked-v1` tag remains unchanged.
+
+### 2026-08-03 21:41 CEST — CALIBRATION-RUNNING-001: resumable collection active
+
+- **Resume evidence:** After the metadata-normalization repair, Supervisor
+  accepted the existing `libero_10-task5-calibration-init10-cell0` artifact
+  without rewriting it: `valid_reset=true`, `success=true`, 193 control steps,
+  metadata SHA `946acfbb57e0ecce6920f153a6bada4b39d2595f3fb2f43219b4bd77a4bf1eff`,
+  trajectory SHA `5169175ce56e96a2b38f1126a1e84f3e20763cc27432e6e383dad694d6180c75`.
+- **Current job:** The same Supervisor process is now executing manifest index 1,
+  `libero_10-task5-calibration-init10-cell1`, in its isolated child. Model
+  weights and EGL initialization have completed; GPU telemetry is ~2.3 GiB and
+  15% utilization. The raw Calibration directory count is exactly 1, with no
+  Locked Test directory or completion receipt yet.
+- **Integrity:** The prior import traceback remains only as historical log text
+  from the fail-closed first attempt. The active parent/child both import the
+  tag checkout, and the repaired script hashes match the locally committed
+  copies. No Discovery service was restarted and no existing artifact is being
+  overwritten.
+- **Next step:** Leave `mech_vla_calibration` under Supervisor to continue in
+  exact manifest order. Recheck counts/receipts after meaningful progress; stop
+  the instance only after all concrete GPU work and any backup transfer are
+  complete, never by deletion/termination/recycle.

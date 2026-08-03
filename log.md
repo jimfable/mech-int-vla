@@ -996,3 +996,24 @@ that experiments, negative results, decisions, and confidence can be audited.
   `HEAD`, run the public Calibration guard, and do not inspect or launch any
   protected split unless an authorized Calibration runtime is present. Keep
   Vast instance 46677323 stopped.
+
+### 2026-08-03 19:02 CEST — CALIBRATION-BLOCK-001: provider did not allocate the GPU
+
+- **Stage:** post-lock Calibration scheduling; no protected split access
+- **Pre-state:** The immutable lock/tag `prereg-locked-v1` points to
+  `18d64941bc8c899b06306fbec21d1c8d2c08f2ea`; the public Calibration guard had
+  passed at that exact commit. The deterministic rank-1 Calibration manifest
+  was generated read-only (160 episodes, init states 10–29, SHA
+  `6f5c7a5baa71eadfda1539e756d42ea6cec575316b6ab1245be7d3c5abfe3c3f`).
+- **Action:** Issued one reversible Vast `start_instance(46677323)` request for
+  the concrete Calibration collection. Vast returned “Required resources are
+  currently unavailable, state change queued”; eight read-only polls remained
+  `actual_status=exited`, `cur_state=stopped`, `intended_status=stopped`, and
+  `next_state=stopped`. SSH remained refused. No Supervisor, rollout writer,
+  transfer, or GPU process was started, and no remote file or artifact changed.
+- **Decision:** Do not retry or invent a second rollout path while the provider
+  has not allocated the preserved instance. Leave it stopped at the verified
+  retained-storage rate. The immutable lock remains valid at its tag; this
+  administrative log checkpoint is deliberately after the lock commit, so any
+  future Calibration attempt must run from the tagged lock worktree and first
+  pass the guard there. No Calibration or Locked Test data was accessed.

@@ -882,3 +882,47 @@ that experiments, negative results, decisions, and confidence can be audited.
   instance 46677323 is stopped at the retained-storage rate. No external blocker
   remains for the already completed Reality Gate, but Calibration is intentionally
   deferred pending this local guard work and authorization boundary.
+
+### 2026-08-03 18:00 CEST — ORIENTATION-AUDIT-001: materialize Discovery-only lock evidence read-only
+
+- **Stage:** post-Discovery receipt derivation; no protected split access
+- **Inputs / integrity:** Re-loaded all 40 exact selected-task artifacts from
+  `artifacts/raw-backup-ready/discovery/` with the fail-closed loader, regenerated
+  the Discovery manifest at immutable execution commit `b491dc7`, and re-evaluated
+  the point-estimate Reality Gate. No remote file, GPU process, or raw backup file
+  was changed. The re-evaluated gate selected rank-1 `libero_10` task 5 and
+  reproduced the previously recorded pass.
+- **Orientation evidence:** Applied the explicit local helper contract of equal
+  weight per recorded control state and every integer control step including the
+  terminal frame. Quaternion extraction unit tests (identity, +/-90 degrees, and
+  180 degrees) passed. The exact 40 artifacts contributed 11,822 states; 11,822
+  were finite (fraction 1.0). Symmetry-aware resultant length was
+  `0.6027090248077962`; physical circular SD was `0.5031504470045496` radians
+  (`28.8283970735` degrees), above the fixed 15-degree criterion. State evidence
+  hash: `1aa4dc5a6f6e33bd02f79468664948c3ffbdc796821fc4d50addea583d985a15`;
+  candidate eligibility hash: `3599dab95b5bbc7ee4b3e6ea1872aa21d7aced6dd3ea61d7287cb6aee863a9fb`.
+  The receipt-to-finalizer path now completes locally after correcting the missing
+  trusted factory-token wiring; candidate lock-receipt hash is
+  `17f033b935ea3f600373b5953cdc5bad5c0fd9dfd3dc1260d022acf3355f36f4`.
+- **Failure-event evidence:** Applying the already amended deterministic rules to
+  the same exact artifacts yielded 27 successful episodes with no event and 13
+  annotated failures: 10 `terminal_horizon` and 3
+  `irrecoverable_workspace_exit`; no invalid-reset or early-terminal cases. Raw
+  object-center bounds were `[-0.4684745740206647, -0.19125620822373215,
+  0.8829480023495043]` to `[-0.16332531682315798, 0.17258802482046695,
+  1.1878611294197472]`; the frozen 5-cm expansion is
+  `[-0.5184745740206648, -0.24125620822373217, 0.8329480023495043]` to
+  `[-0.11332531682315798, 0.22258802482046697, 1.2378611294197472]`.
+  A candidate freeze was not published because its implementation commit must be
+  the eventual clean lock commit.
+- **Interpretation / guard boundary:** The materialized values are Discovery
+  evidence, not Calibration outcomes. The weighting/cadence choice is present in
+  the uncommitted helper but was not explicitly recorded in `PREREG.md` or
+  `AMENDMENTS.md` before outcome visibility, and the existing Calibration guard
+  still does not validate the full Reality-Gate receipt, orientation evidence, and
+  failure freeze as one round-trip. Therefore no freeze file, tag, Calibration
+  manifest, GPU job, or Locked Test access was created. This entry is an explicit
+  outcome-visibility disclosure and does not authorize a protocol lock.
+- **Decision:** Retain the verified backup and stopped instance. Treat the local
+  hardening and receipt-to-guard integration as unfinished; do not launch
+  Calibration until a clean, tested lock commit and exact guard round-trip exist.

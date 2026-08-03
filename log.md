@@ -721,3 +721,107 @@ that experiments, negative results, decisions, and confidence can be audited.
   init-0 success makes ten IID cells overall). The yaw batch began immediately after
   the validated gate, so the instance was neither idle nor stopped and was never
   deleted, destroyed, recycled, or terminated.
+
+### 2026-08-03 17:22 CEST — DISCOVERY-002: complete the rank-1 yaw Reality Gate
+
+- **Stage:** Discovery / Reality Gate perturbation phase
+- **Question:** Does the frozen rank-1 policy produce a preregistered dynamic
+  failure range under all 30 manifested yaw perturbations after the IID gate has
+  passed?
+- **Pre-state / commit:** execution remained pinned to
+  `b491dc76641efe3a5c5d7eef6bb87af13d85f10b`; the ten IID cells had passed with
+  eight successes. The authoritative Supervisor had already started the yaw batch
+  in the frozen init-major order; no cell was restarted, duplicated, reordered, or
+  overwritten during this continuation.
+- **Method:** Reconnected through the verified Vast proxy and observed the existing
+  Supervisor and its sole child process until it exited. The Supervisor revalidated
+  the IID set, then ran the exact 30 yaw cells (condition indices 1--3) one
+  process per cell under the existing reality-gate lock. After exit, an independent
+  remote invocation of the committed fail-closed loader walked all raw discovery
+  directories and validated metadata, provenance, array schema, terminal handling,
+  and NumPy safety for every directory.
+- **Inputs and controls:** rank-1 LIBERO task 5; yaw conditions from the frozen
+  manifest; manifest SHA-256
+  `24b5849a364b0798a66c6280cb3379de885a4247c519cf9625c05173a8af1dae`; exact
+  Linux/EGL/CUDA environment and policy/base-VLM revisions from SETUP-013; no
+  Locked Test access or later-stage calibration was opened.
+- **Results:** The Supervisor exited with its authoritative summary
+  `manifested_perturbations=30`, `valid_perturbations=30`,
+  `invalid_perturbations=0`, `successes_among_valid=19`,
+  `failures_among_valid=11`, `failure_rate=0.36666666666666664`,
+  `validity_pass=true`, and `dynamic_range_pass=true`. An independent loader then
+  validated all 40 exact Discovery directories (ten IID plus 30 yaw), found 40
+  unique expected episode IDs, all 40 valid resets, and 27 total successes.
+  No staging directory or active rollout process remained after Supervisor exit.
+- **Interpretation:** Rank 1 passes the preregistered perturbation Reality Gate:
+  the full 30-cell set is valid and its empirical failure rate lies inside the
+  frozen inclusive interval [0.20, 0.80]. The result is a gate decision only; it
+  does not establish the mechanistic hypothesis, predictive advantage, internal
+  representation, or causal intervention effect.
+- **Confidence:** high for completion and gate status because the authoritative
+  receipt, clean Supervisor exit, exact ordered cell IDs, and independent loader
+  agree. Confidence in any later scientific claim remains unchanged until the
+  preregistered calibration and locked-test protocol is run.
+- **Decision:** Preserve the complete raw set and receipt logs, create two
+  independent read-only inventories, and perform a checksum-verified off-instance
+  backup before considering a Vast stop. Do not launch any rank-2/3 or later-stage
+  rollout in this continuation, and do not touch the retained instance until the
+  backup audit is complete.
+- **Next step:** return-copy the raw Discovery tree through the provider transfer
+  endpoint into a durable local incomplete staging tree, independently compare all
+  file paths/sizes/hashes, then commit/push this checkpoint and stop the instance
+  only if no concrete GPU or transfer job remains and the backup is exact.
+- **Artifacts:** GPU raw tree
+  `/workspace/research-artifacts/raw/discovery/`; authoritative log
+  `/workspace/run-logs/rank1-yaw-batch.log`; per-cell logs under
+  `/workspace/run-logs/`; this log entry.
+- **Compute / cost:** 30 registered yaw rollouts on the RTX 5090, including 19
+  successes and 11 valid 520-step truncations or other failures as recorded by the
+  immutable receipts. The instance remained running throughout execution; it was
+  never deleted, destroyed, recycled, terminated, or otherwise mutated.
+
+### 2026-08-03 17:44 CEST — BACKUP-001: return and verify the complete Discovery set
+
+- **Stage:** artifact preservation / post-Reality-Gate audit
+- **Question:** Can the complete canonical Discovery raw set and its irreplaceable
+  receipts be preserved off-instance with an independently verifiable inventory
+  before the GPU is stopped?
+- **Pre-state:** the yaw Supervisor had exited cleanly and no rollout writer
+  remained. The remote raw tree contained 40 immutable episode directories (2.8 GiB
+  on disk; 2,921,163,613 raw bytes), with 179 GiB free on the retained 200 GiB
+  disk. The laptop had 18 GiB free.
+- **Method:** Generated two independent SHA-256 inventories after quiescence over
+  the raw Discovery tree, run logs, run-state scripts, and exact asset closure.
+  The canonical scope contained 126 files and 2,943,020,773 bytes; both inventories
+  were byte-identical with SHA-256
+  `163b09affb25bcb5a8d5a3a6a54dda1c497c696228f0d729d3dbf25a85dc8abd`. The
+  provider return-copy endpoint could not be used from this laptop (transient
+  console DNS and then 404/auth responses), so a verified SSH proxy fallback was
+  used. Four persistent, host-key-verified SSH control connections streamed
+  disjoint init partitions in parallel into a local `.incomplete` tree; no two
+  streams targeted the same file and no remote source was changed.
+- **Results:** All four streams exited zero. The local stage contains all 40
+  artifact directories, 80 raw files, run logs, run-state, the 21 MiB asset
+  closure, and both inventory copies. Hashing every canonical local file against
+  the remote inventory found zero mismatches over all 126 files and
+  2,943,020,773 bytes. A fresh local fail-closed loader independently loaded all
+  40 copied artifacts: 40 unique IDs, 40 valid resets, 27 successes; first and
+  last metadata/trajectory hashes match the remote receipts. The stage was then
+  atomically renamed to `artifacts/raw-backup-ready/`; it is ignored by Git and
+  remains available as the durable off-instance copy.
+- **Interpretation:** The raw Discovery set and supporting receipts are now
+  recoverable without the Vast disk. This satisfies the preservation precondition
+  for an idle-instance stop; it does not authorize any Locked Test access or later
+  protocol step by itself.
+- **Confidence:** high for byte-level preservation and loader validity because the
+  inventory was independently recomputed, the transfer used disjoint streams,
+  every file was rehashed locally, and every artifact was loaded locally.
+- **Decision:** Commit/push the completed yaw and backup receipts, perform one last
+  read-only GPU/process check, then stop instance 46677323 only if it remains free
+  of concrete jobs. Never delete, recycle, terminate, or overwrite the instance.
+- **Artifacts:** durable local backup
+  `artifacts/raw-backup-ready/`; canonical inventory copies within that directory;
+  remote inventory files under `/workspace/runstate/`; this log entry.
+- **Compute / cost:** no GPU work or rollout was launched during backup. The Vast
+  instance stayed running while the transfer and verification were active and is
+  eligible for the retained-storage rate only after the explicit stop check.

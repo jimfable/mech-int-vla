@@ -14,6 +14,8 @@ artifacts/scores/
 artifacts/features/
 artifacts/failure-events/
 artifacts/cache/
+artifacts/raw-backup-stage.incomplete/
+artifacts/raw-backup-ready/
 *.mp4
 *.npy
 *.npz

@@ -1145,6 +1145,21 @@ that experiments, negative results, decisions, and confidence can be audited.
   monitoring. No stop, recycle, terminate, or Locked Test access is permitted
   at this stage.
 
+### 2026-08-04 00:37 CEST — CALIBRATION-RUNNING-005: overnight progress at 73/160
+
+- **Read-only audit:** Vast instance 46677323 remains `running`; the protected
+  checkout is clean at `18d64941bc8c899b06306fbec21d1c8d2c08f2ea`, exactly the
+  `prereg-locked-v1` tag. The old Discovery Supervisor programs remain stopped.
+- **Progress:** The authoritative `mech_vla_calibration` Supervisor has
+  atomically published and independently validated 73 Calibration artifact
+  directories (manifest indices 0–72); no staging directory exists and no
+  completion receipt exists yet. Index 73 (`init19-cell1`) is the sole active
+  child. Recent cells remain valid and ordered, including index 72 with
+  `success=true`, 197 control steps, metadata `34f5aab1…`, trajectory
+  `5ae33c7e…`.
+- **Decision:** No restart, duplicate, parallelization, overwrite, or protocol
+  change. Leave the concrete GPU job running and continue read-only monitoring.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

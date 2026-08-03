@@ -1128,3 +1128,17 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** Continue the existing Supervisor job without intervention;
   this is ordinary protocol execution, not a new rollout path. Preserve the
   immutable tag and do not inspect or instantiate Locked Test.
+
+### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
+
+- **Progress:** Calibration manifest indices 0–3 are now accounted for exactly
+  once. Index 2 succeeded after 162 steps (metadata `2fad977d…`, trajectory
+  `4b1b0c36…`); index 3 succeeded after 179 steps (metadata `9298a304…`,
+  trajectory `b7043520…`). The earlier index-1 truncation remains valid and
+  unchanged. All four directories were published atomically and independently
+  revalidated by the parent.
+- **Current state:** Index 4 (`init10-cell4`) is the only active child; the
+  Supervisor remains `RUNNING`, GPU telemetry is healthy, and the remote raw
+  tree count is 4/160. No Locked Test path has been instantiated.
+- **Decision:** Continue under the same Supervisor process and preserve all
+  receipts for the eventual off-instance backup.

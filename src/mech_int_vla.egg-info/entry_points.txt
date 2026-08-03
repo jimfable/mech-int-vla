@@ -1,2 +1,0 @@
-[console_scripts]
-mech-int-vla-runtime = mech_int_vla.runtime_cli:main

@@ -69,7 +69,7 @@ left to environment resolution.
   outcomes and the replacement was selected solely for architectural causal
   accessibility. The depth is fixed prospectively at layer 12, matching the
   preregistered late-expert depth, and will not be tuned.
-- **Implementing commit:** `PENDING_THIS_COMMIT`
+- **Implementing commit:** `aa863a6177a103ccb67d56e219367a0dc8c1ff03`
 
 ### 2026-08-03 — Correct stale checkpoint state-shape metadata
 
@@ -89,7 +89,7 @@ left to environment resolution.
   Calibration, or Locked Test output had been run or viewed.
 - **Bias risk and mitigation:** Negligible. The value is fixed by two independent
   pinned runtime artifacts and guarded by fail-closed assertions.
-- **Implementing commit:** `PENDING_THIS_COMMIT`
+- **Implementing commit:** `aa863a6177a103ccb67d56e219367a0dc8c1ff03`
 
 ### 2026-08-03 — Fix condition timing and operational validity definitions
 
@@ -120,4 +120,4 @@ left to environment resolution.
 - **Bias risk and mitigation:** Low. Thresholds are fixed prospectively from common
   MuJoCo stability scales, every condition receives equal settling actions, and
   invalid episodes remain excluded exactly as preregistered.
-- **Implementing commit:** `PENDING_THIS_COMMIT`
+- **Implementing commit:** `aa863a6177a103ccb67d56e219367a0dc8c1ff03`

@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -47,9 +48,17 @@ def _git(root: Path, *args: str) -> str:
     ).stdout.strip()
 
 
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(nested) for key, nested in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(nested) for nested in value]
+    return value
+
+
 def _canonical_sha(value: Any) -> str:
     encoded = json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        _jsonable(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 

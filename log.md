@@ -1066,3 +1066,27 @@ that experiments, negative results, decisions, and confidence can be audited.
   a completion receipt. Start it only after this checkpoint is committed and
   the final read-only no-active-job check passes; do not start any old Discovery
   service and do not instantiate Locked Test.
+
+### 2026-08-03 21:39 CEST — CALIBRATION-RESUME-002: first-cell artifact preserved; runner validation patched
+
+- **Observed execution:** The first corrected Supervisor launch reached the
+  actual policy process for `libero_10-task5-calibration-init10-cell0`; model
+  weights loaded offline, EGL initialized, and the RTX 5090 reached ~2.3 GiB
+  and 11% utilization. The cell completed its atomic write, leaving exactly
+  one Calibration artifact directory and no staging directory.
+- **Failure:** The child then failed only while comparing the validated loader's
+  nested `mappingproxy` metadata to the manifest (`TypeError: mappingproxy is not
+  JSON serializable`). The parent exited before starting cell 1; no duplicate
+  rollout, overwrite, or Locked Test access occurred. A read-only check confirmed
+  Supervisor `EXITED`, no calibration/discovery process, GPU 2 MiB/0%, and the
+  preserved cell-0 artifact.
+- **Repair:** Updated both runner helpers to canonicalize `Mapping`/tuple values
+  before hashing. The change is orchestration-only and does not alter the pinned
+  policy, task, condition ordering, manifest, lock payload, or artifact writer.
+  Local syntax/plan validation passed; the exact repaired script hashes now match
+  the remote copies (`calibration_cell` `397bf4e7…`, `calibration_supervisor`
+  `9710d1c2…`). The next Supervisor start must first resume-validate the existing
+  cell-0 artifact, then continue at manifest index 1.
+- **Decision:** Keep the instance running only for the resumed concrete
+  Calibration job. Do not rerun cell 0 and do not touch any old Discovery
+  service. The immutable `prereg-locked-v1` tag remains unchanged.

@@ -666,3 +666,58 @@ that experiments, negative results, decisions, and confidence can be audited.
   The user added `$20` credit during execution. The instance was not stopped because
   the remaining IID batch began immediately, and it was never deleted, destroyed,
   recycled, or terminated.
+
+### 2026-08-03 16:03 CEST — DISCOVERY-001: pass the rank-1 IID reproduction gate
+
+- **Stage:** Discovery / Reality Gate reproduction phase
+- **Question:** Does the frozen rank-1 policy succeed on at least six of the ten
+  preregistered IID initial states before any yaw perturbation is executed?
+- **Pre-state / commit:** execution remained fixed at
+  `b491dc76641efe3a5c5d7eef6bb87af13d85f10b`; init 0 had already produced one
+  independently validated success, while the other nine IID cells had never been
+  executed on the registered GPU runtime.
+- **Method:** Ran init IDs 1 through 9 sequentially as one-process-per-cell
+  Supervisor children under an external file lock. Before resuming, the batch
+  loaded and provenance-matched init 0. After every child exited, it used the
+  committed artifact loader to validate the exact manifested episode metadata,
+  full array schema, terminal state, and both file hashes before launching the next
+  init. It then reloaded the exact ten-artifact set and computed the frozen
+  six-of-ten gate; no perturbation cell was launched by this batch.
+- **Inputs and controls:** rank-1 LIBERO task 5; condition index 0 (IID); base init
+  IDs 0--9 in ascending order; policy revision
+  `31d453f7edd78c839a8bbc39744a292686daf0de`; manifest SHA-256
+  `24b5849a364b0798a66c6280cb3379de885a4247c519cf9625c05173a8af1dae`;
+  exact Linux/EGL/CUDA environment from SETUP-013. Existing destinations were never
+  overwritten, invalid resets would have retained the one identical retry receipt,
+  and the batch halted on any child or loader failure.
+- **Results:** All 10/10 IID resets were valid and all ten artifact directories
+  loaded successfully with no staging residue. Eight succeeded: init 0 at 164
+  steps, init 2 at 171, init 3 at 190, init 4 at 164, init 6 at 158, init 7 at 159,
+  init 8 at 173, and init 9 at 163. Init 1 and init 5 remained unsuccessful through
+  the exact 520-step horizon and were recorded as truncations. The corresponding
+  trajectory SHA-256 prefixes in init order are `9e97ae27`, `96168b03`, `261b10d5`,
+  `4dfa26fc`, `f406439c`, `2c65df3d`, `697c55be`, `fd882f99`, `35bef348`, and
+  `a3047c37`. Supervisor exited with expected status zero. The complete IID raw set
+  occupies approximately 578 MiB on the retained GPU disk.
+- **Interpretation:** The 8/10 success rate passes the preregistered behavioral
+  reproduction requirement and therefore authorizes the rank-1 yaw reality-gate
+  phase. This result establishes baseline task competence but does not by itself
+  establish a usable perturbation failure range or any mechanistic hypothesis.
+- **Confidence:** high for the gate decision because the complete exact set was
+  executed in manifest order and each immutable artifact was independently loaded;
+  no missing, invalid, duplicate, mixed-commit, or extra IID cell entered the count.
+- **Decision:** Keep rank 1 and open exactly its 30 hash-balanced yaw cells in
+  manifested init-major order. Do not advance to ranks 2 or 3 unless rank 1 later
+  fails the frozen perturbation validity/dynamic-range gate.
+- **Next step:** execute and validate all 30 yaw cells, then require at least 27
+  valid perturbations and an empirical failure rate between 0.20 and 0.80 inclusive.
+  Generate a canonical per-file inventory and checksum-verified off-instance backup
+  before any Vast stop.
+- **Artifacts:** ten directories under GPU
+  `/workspace/research-artifacts/raw/discovery/`; per-cell logs plus
+  `/workspace/run-logs/rank1-iid-batch.log`; this log entry.
+- **Compute / cost:** nine additional registered GPU rollouts totaling 2,218 control
+  steps (six early successes and two 520-step truncations, plus the already logged
+  init-0 success makes ten IID cells overall). The yaw batch began immediately after
+  the validated gate, so the instance was neither idle nor stopped and was never
+  deleted, destroyed, recycled, or terminated.

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import sys
 import types
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from mech_int_vla.snapshots import (
     BASE_VLM_ALLOW_PATTERNS,
     POLICY_ALLOW_PATTERNS,
+    SnapshotError,
     SnapshotPaths,
     load_locked_smolvla,
     load_model_input_lock,
@@ -18,23 +21,37 @@ from mech_int_vla.snapshots import (
 ROOT = Path(__file__).parents[1]
 
 
+def lock_for_weights(tmp_path: Path, weights: bytes) -> Path:
+    lock_path = tmp_path / "environment.lock"
+    contents = (ROOT / "environment.lock").read_text(encoding="utf-8")
+    expected = load_model_input_lock(ROOT / "environment.lock").policy_model_sha256
+    contents = contents.replace(expected, hashlib.sha256(weights).hexdigest())
+    lock_path.write_text(contents, encoding="utf-8")
+    return lock_path
+
+
 def test_environment_lock_has_full_model_revisions() -> None:
     lock = load_model_input_lock(ROOT / "environment.lock")
     assert lock.policy_revision == "31d453f7edd78c839a8bbc39744a292686daf0de"
     assert lock.base_vlm_revision == "7b375e1b73b11138ff12fe22c8f2822d8fe03467"
     assert lock.policy_n_action_steps == 1
+    assert lock.policy_model_sha256 == (
+        "9a9f6413e42c0f332fccbce9a0dc796af2790f82cf002f791cdbf7e01e1afca8"
+    )
 
 
 def test_snapshot_resolution_passes_exact_revisions_and_defaults_offline(
     tmp_path: Path, monkeypatch
 ) -> None:
-    lock = load_model_input_lock(ROOT / "environment.lock")
+    weights = b"weights"
+    lock_path = lock_for_weights(tmp_path, weights)
+    lock = load_model_input_lock(lock_path)
     policy = tmp_path / lock.policy_revision
     base = tmp_path / lock.base_vlm_revision
     policy.mkdir()
     base.mkdir()
     (policy / "config.json").write_text("{}")
-    (policy / lock.policy_model_file).write_bytes(b"weights")
+    (policy / lock.policy_model_file).write_bytes(weights)
     (base / "config.json").write_text("{}")
     calls = []
 
@@ -45,7 +62,7 @@ def test_snapshot_resolution_passes_exact_revisions_and_defaults_offline(
     hub = types.ModuleType("huggingface_hub")
     hub.snapshot_download = snapshot_download
     monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
-    paths = resolve_snapshot_paths(ROOT / "environment.lock")
+    paths = resolve_snapshot_paths(lock_path)
     assert paths.policy == policy.resolve()
     assert paths.base_vlm == base.resolve()
     assert [call["revision"] for call in calls] == [
@@ -56,6 +73,44 @@ def test_snapshot_resolution_passes_exact_revisions_and_defaults_offline(
     assert tuple(calls[0]["allow_patterns"]) == POLICY_ALLOW_PATTERNS
     assert tuple(calls[1]["allow_patterns"]) == BASE_VLM_ALLOW_PATTERNS
     assert "*.safetensors" not in BASE_VLM_ALLOW_PATTERNS
+
+
+def test_model_input_lock_rejects_non_lowercase_or_missing_checkpoint_digest(
+    tmp_path: Path,
+) -> None:
+    original = (ROOT / "environment.lock").read_text(encoding="utf-8")
+    expected = load_model_input_lock(ROOT / "environment.lock").policy_model_sha256
+    for index, replacement in enumerate((expected.upper(), expected[:-1], "")):
+        candidate = tmp_path / f"invalid-{index}.lock"
+        if replacement:
+            contents = original.replace(expected, replacement)
+        else:
+            contents = original.replace(f'policy_model_sha256 = "{expected}"\n', "")
+        candidate.write_text(contents, encoding="utf-8")
+        with pytest.raises(SnapshotError, match="policy_model_sha256|environment lock"):
+            load_model_input_lock(candidate)
+
+
+def test_snapshot_resolution_fails_closed_on_checkpoint_byte_mismatch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    lock = load_model_input_lock(ROOT / "environment.lock")
+    policy = tmp_path / lock.policy_revision
+    base = tmp_path / lock.base_vlm_revision
+    policy.mkdir()
+    base.mkdir()
+    (policy / "config.json").write_text("{}", encoding="utf-8")
+    (policy / lock.policy_model_file).write_bytes(b"tampered weights")
+    (base / "config.json").write_text("{}", encoding="utf-8")
+
+    hub = types.ModuleType("huggingface_hub")
+    hub.snapshot_download = lambda **kwargs: str(
+        policy if kwargs["repo_id"] == lock.policy_repo else base
+    )
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+
+    with pytest.raises(SnapshotError, match="checkpoint SHA-256 mismatch"):
+        resolve_snapshot_paths(ROOT / "environment.lock")
 
 
 def test_policy_and_tokenizer_are_both_overridden_to_local_snapshot(

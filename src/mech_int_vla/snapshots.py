@@ -7,6 +7,8 @@ therefore be imported on machines without the rollout stack.
 
 from __future__ import annotations
 
+import hashlib
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +24,7 @@ class ModelInputLock:
     policy_repo: str
     policy_revision: str
     policy_model_file: str
+    policy_model_sha256: str
     policy_num_flow_steps: int
     policy_chunk_size: int
     policy_n_action_steps: int
@@ -92,6 +95,18 @@ POLICY_ALLOW_PATTERNS = (
     "*.safetensors",
 )
 BASE_VLM_ALLOW_PATTERNS = ("*.json", "*.model", "*.txt")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+    except OSError as exc:
+        raise SnapshotError(f"could not hash policy checkpoint {path}: {exc}") from exc
+    return digest.hexdigest()
 
 
 def load_model_input_lock(path: str | Path) -> ModelInputLock:
@@ -104,6 +119,7 @@ def load_model_input_lock(path: str | Path) -> ModelInputLock:
         "policy_repo",
         "policy_revision",
         "policy_model_file",
+        "policy_model_sha256",
         "policy_num_flow_steps",
         "policy_chunk_size",
         "policy_n_action_steps",
@@ -113,10 +129,14 @@ def load_model_input_lock(path: str | Path) -> ModelInputLock:
     missing = [name for name in required if name not in raw]
     if missing:
         raise SnapshotError(f"environment lock is missing: {', '.join(missing)}")
+    policy_model_sha256 = raw["policy_model_sha256"]
+    if not isinstance(policy_model_sha256, str):
+        raise SnapshotError("policy_model_sha256 must be a string")
     lock = ModelInputLock(
         policy_repo=str(raw["policy_repo"]),
         policy_revision=str(raw["policy_revision"]),
         policy_model_file=str(raw["policy_model_file"]),
+        policy_model_sha256=policy_model_sha256,
         policy_num_flow_steps=int(raw["policy_num_flow_steps"]),
         policy_chunk_size=int(raw["policy_chunk_size"]),
         policy_n_action_steps=int(raw["policy_n_action_steps"]),
@@ -133,6 +153,10 @@ def load_model_input_lock(path: str | Path) -> ModelInputLock:
             raise SnapshotError(
                 f"{name} must be a full lowercase 40-character commit SHA"
             )
+    if _SHA256.fullmatch(lock.policy_model_sha256) is None:
+        raise SnapshotError(
+            "policy_model_sha256 must be a lowercase 64-character SHA-256 digest"
+        )
     return lock
 
 
@@ -204,6 +228,13 @@ def resolve_snapshot_paths(
         raise SnapshotError(f"policy snapshot is missing: {', '.join(missing)}")
     if not (base_vlm / "config.json").is_file():
         raise SnapshotError("base-VLM snapshot is missing config.json")
+    policy_model = policy / lock.policy_model_file
+    actual_policy_sha256 = _sha256_file(policy_model)
+    if actual_policy_sha256 != lock.policy_model_sha256:
+        raise SnapshotError(
+            "policy checkpoint SHA-256 mismatch: "
+            f"expected {lock.policy_model_sha256}, got {actual_policy_sha256}"
+        )
     return SnapshotPaths(policy=policy, base_vlm=base_vlm, lock=lock)
 
 

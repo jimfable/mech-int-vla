@@ -19,14 +19,18 @@ is in [`PREREG.md`](PREREG.md). Changes to the protocol are recorded only in
 
 The exact CUDA runtime and checkpoint pass strict offline loading, the five causal
 capture sites pass synthetic tests, and the deterministic single-episode executor
-is implemented. The circular-probe selection, shared M0/M1/M2 predictor fitting,
-and confirmatory statistical evaluation pipelines are also implemented and tested
-against synthetic data. The first simulator construction exposed a separately
-distributed LIBERO asset dependency before an initial state was loaded; its exact
-snapshot is now pinned and content-verified. No successful simulator reset, policy
-action, success label, probe result, or intervention result has yet been observed.
-The Vast instance is deliberately stopped between concrete jobs to avoid idle GPU
-charges.
+is implemented. It stores both raw camera streams losslessly, captures activations
+at the frozen five-step cadence, and performs the one required fresh-runtime retry
+after an invalid reset without running the policy. Safe artifact ingestion,
+circular-probe selection, shared M0/M1/M2 predictor fitting, causal matching and
+patch evaluation, and confirmatory statistical evaluation are implemented and
+tested against synthetic data. The lock guards verify the checkpoint and frozen
+analysis artifacts by content and require exact Locked Test coverage. The first
+simulator construction exposed a separately distributed LIBERO asset dependency
+before an initial state was loaded; its exact snapshot is pinned and
+content-verified. No successful simulator reset, policy action, success label,
+probe result, or intervention result has yet been observed. The Vast instance is
+deliberately stopped between concrete jobs to avoid idle GPU charges.
 
 ## Reproducibility contract
 

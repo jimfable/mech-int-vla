@@ -40,10 +40,15 @@ BASE_REVISION = "2" * 40
 
 
 def make_frame(step: int, *, success: bool = False) -> RawTraceFrame:
+    agent_image = np.full((360, 360, 3), step, dtype=np.uint8)
+    wrist_image = np.full((360, 360, 3), step + 10, dtype=np.uint8)
     return RawTraceFrame(
         control_step=step,
         simulator_time=0.05 * step,
-        raw_observation={"pixels": np.zeros((1, 1, 3), dtype=np.uint8)},
+        raw_observation={
+            "agentview_image": agent_image,
+            "robot0_eye_in_hand_image": wrist_image,
+        },
         policy_state=np.arange(8, dtype=np.float32) + step,
         eef_position=np.asarray([0.0, 0.0, 1.0]),
         eef_quaternion_xyzw=np.asarray([0.0, 0.0, 0.0, 1.0]),
@@ -83,6 +88,8 @@ class FakeInstrumentation:
         self.calls = ()
 
     def emit(self) -> None:
+        if not self.is_installed:
+            return
         self.run_index += 1
         self.calls = (
             CallRecord(CallPhase.PREFIX_CACHE, self.run_index, None, None),
@@ -188,6 +195,7 @@ class FakeEpisode:
             reset_noop_steps=10,
             n_action_steps=1,
         )
+        self.validity_config = SimpleNamespace(schema="synthetic-frozen-validity")
         self.success_after = success_after
         self.valid = valid
         self.primary_object_name: str | None = None
@@ -277,6 +285,7 @@ def test_successful_episode_records_actions_frames_and_five_candidates(
         runtime.instrumentation,
         episode_spec(),
         condition(),
+        validity_retry_factory=lambda: FakeEpisode(valid=False),
         artifact_root=tmp_path / "artifacts" / "raw",
     )
 
@@ -302,14 +311,28 @@ def test_successful_episode_records_actions_frames_and_five_candidates(
         "truncated": False,
     }
     assert metadata["capture"]["activation_candidates"] == list(ACTIVATION_CANDIDATES)
+    assert metadata["capture"]["score_stride_steps"] == 5
+    assert metadata["capture"]["scored_policy_select_calls"] == 1
+    assert metadata["task"]["primary_object"] == "book"
+    assert metadata["task"]["planar_symmetry_order"] == 1
     assert metadata["capture"]["frame_scalar_feature_names"] == list(
         FRAME_SCALAR_FEATURE_NAMES
     )
     assert metadata["capture"]["task_predicate_names"] == ["goal_satisfied"]
+    assert metadata["capture"]["raw_images_stored"] is True
+    assert metadata["capture"]["raw_image_shape"] == [360, 360, 3]
 
     with np.load(result.artifact_path / "trajectory.npz", allow_pickle=False) as data:
         assert data["actions"].shape == (2, 7)
         assert data["frame_policy_state"].shape == (3, 8)
+        assert data["frame_agentview_image"].shape == (3, 360, 360, 3)
+        assert data["frame_robot0_eye_in_hand_image"].shape == (3, 360, 360, 3)
+        assert data["frame_agentview_image"][:, 0, 0, 0].tolist() == [0, 1, 2]
+        assert data["frame_robot0_eye_in_hand_image"][:, 0, 0, 0].tolist() == [
+            10,
+            11,
+            12,
+        ]
         assert data["frame_goal_position"].shape == (3, 3)
         assert data["frame_scalar_features"].shape == (
             3,
@@ -317,13 +340,16 @@ def test_successful_episode_records_actions_frames_and_five_candidates(
         )
         assert data["frame_task_predicates"].shape == (3, 1)
         assert data["frame_task_success"].tolist() == [False, False, True]
+        feature_names = metadata["capture"]["frame_scalar_feature_names"]
+        eef_object_sin = feature_names.index("symmetry_eef_object_yaw_sin")
+        eef_object_cos = feature_names.index("symmetry_eef_object_yaw_cos")
+        assert data["frame_scalar_features"][:, eef_object_sin] == pytest.approx(0.0)
+        assert data["frame_scalar_features"][:, eef_object_cos] == pytest.approx(1.0)
+        assert data["activation_control_step"].tolist() == [0]
         for candidate_index, candidate in enumerate(ACTIVATION_CANDIDATES):
             values = data[f"activation_{candidate}"]
-            assert values.shape == (2, 4)
-            assert values[:, 0].tolist() == [
-                float(candidate_index),
-                float(10 + candidate_index),
-            ]
+            assert values.shape == (1, 4)
+            assert values[:, 0].tolist() == [float(candidate_index)]
     assert not list(result.artifact_path.parent.glob(".*.tmp-*"))
 
 
@@ -336,6 +362,7 @@ def test_valid_episode_runs_until_frozen_horizon_truncation(tmp_path) -> None:
         runtime.instrumentation,
         episode_spec(),
         condition(),
+        validity_retry_factory=lambda: FakeEpisode(valid=False),
         artifact_root=tmp_path / "artifacts" / "raw",
     )
 
@@ -349,17 +376,44 @@ def test_valid_episode_runs_until_frozen_horizon_truncation(tmp_path) -> None:
         assert data["truncated"].tolist() == [False, False, True]
 
 
-def test_invalid_reset_records_zero_action_artifact_without_policy_inference(
-    tmp_path,
-) -> None:
+def test_activations_are_serialized_only_at_five_step_cadence(tmp_path) -> None:
     runtime = FakePolicyRuntime()
-    episode = FakeEpisode(valid=False)
+    episode = FakeEpisode(max_steps=6, success_after=None)
     result = run_single_episode(
         runtime,
         episode,
         runtime.instrumentation,
         episode_spec(),
         condition(),
+        validity_retry_factory=lambda: FakeEpisode(valid=False),
+        artifact_root=tmp_path / "artifacts" / "raw",
+    )
+
+    metadata = json.loads((result.artifact_path / "metadata.json").read_text())
+    assert metadata["capture"]["policy_select_calls"] == 6
+    assert metadata["capture"]["scored_policy_select_calls"] == 2
+    assert metadata["capture"]["instrumented_internal_calls"] == 22
+    with np.load(result.artifact_path / "trajectory.npz", allow_pickle=False) as data:
+        assert data["activation_control_step"].tolist() == [0, 5]
+        assert all(
+            data[f"activation_{candidate}"].shape == (2, 4)
+            for candidate in ACTIVATION_CANDIDATES
+        )
+
+
+def test_invalid_reset_records_zero_action_artifact_without_policy_inference(
+    tmp_path,
+) -> None:
+    runtime = FakePolicyRuntime()
+    episode = FakeEpisode(valid=False)
+    retry = FakeEpisode(valid=False)
+    result = run_single_episode(
+        runtime,
+        episode,
+        runtime.instrumentation,
+        episode_spec(),
+        condition(),
+        validity_retry_factory=lambda: retry,
         artifact_root=tmp_path / "artifacts" / "raw",
     )
 
@@ -369,8 +423,12 @@ def test_invalid_reset_records_zero_action_artifact_without_policy_inference(
     assert runtime.policy.reset_count == 0
     assert runtime.policy.select_count == 0
     assert runtime.instrumentation.exit_count == 0
+    assert retry.reset_count == 1
     metadata = json.loads((result.artifact_path / "metadata.json").read_text())
     assert metadata["validity"]["reasons"] == ["primary_object_penetration"]
+    assert metadata["validity_retry"]["performed"] is True
+    assert metadata["validity_retry"]["agrees_on_invalidity"] is True
+    assert metadata["validity_retry"]["agrees_on_reasons"] is True
     with np.load(result.artifact_path / "trajectory.npz", allow_pickle=False) as data:
         assert data["actions"].shape == (0, 7)
         assert data["frame_policy_state"].shape == (1, 8)
@@ -392,11 +450,51 @@ def test_inference_exception_removes_hooks_and_publishes_no_artifact(tmp_path) -
             runtime.instrumentation,
             episode_spec(),
             condition(),
+            validity_retry_factory=lambda: FakeEpisode(valid=False),
             artifact_root=artifact_root,
         )
 
     assert runtime.instrumentation.exit_count == 1
     assert not runtime.instrumentation.is_installed
+    assert not (artifact_root / "discovery" / episode_spec().episode_id).exists()
+
+
+def test_missing_or_malformed_raw_camera_fails_before_artifact_publication(
+    tmp_path,
+) -> None:
+    runtime = FakePolicyRuntime()
+    episode = FakeEpisode(success_after=1)
+    original_reset = episode.reset
+
+    def reset_without_wrist(*, seed: int, condition: ConditionSpec) -> ResetResult:
+        result = original_reset(seed=seed, condition=condition)
+        raw = dict(result.frame.raw_observation)
+        raw.pop("robot0_eye_in_hand_image")
+        frame = RawTraceFrame(
+            **{
+                **result.frame.__dict__,
+                "raw_observation": raw,
+            }
+        )
+        return ResetResult(
+            observation=result.observation,
+            frame=frame,
+            validity=result.validity,
+            settle_actions=result.settle_actions,
+        )
+
+    episode.reset = reset_without_wrist
+    artifact_root = tmp_path / "artifacts" / "raw"
+    with pytest.raises(RolloutError, match="missing required camera"):
+        run_single_episode(
+            runtime,
+            episode,
+            runtime.instrumentation,
+            episode_spec(),
+            condition(),
+            validity_retry_factory=lambda: FakeEpisode(valid=False),
+            artifact_root=artifact_root,
+        )
     assert not (artifact_root / "discovery" / episode_spec().episode_id).exists()
 
 
@@ -411,6 +509,7 @@ def test_protected_artifact_path_fails_before_simulator_reset(tmp_path) -> None:
             runtime.instrumentation,
             episode_spec(),
             condition(),
+            validity_retry_factory=lambda: FakeEpisode(valid=False),
             artifact_root=tmp_path / "locks" / "rollouts",
         )
 
@@ -429,6 +528,7 @@ def test_runner_rejects_reusing_an_episode_runtime(tmp_path) -> None:
             runtime.instrumentation,
             episode_spec(),
             condition(),
+            validity_retry_factory=lambda: FakeEpisode(valid=False),
             artifact_root=tmp_path / "artifacts" / "raw",
         )
 
@@ -466,5 +566,6 @@ def test_activation_schema_drift_fails_closed(tmp_path, wrong_location) -> None:
             runtime.instrumentation,
             episode_spec(),
             condition(),
+            validity_retry_factory=lambda: FakeEpisode(valid=False),
             artifact_root=tmp_path / "artifacts" / "raw",
         )

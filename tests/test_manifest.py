@@ -14,6 +14,12 @@ from mech_int_vla.config import ProtocolConfigError
 ROOT = Path(__file__).parents[1]
 POLICY = "31d453f7edd78c839a8bbc39744a292686daf0de"
 COMMIT = "a" * 40
+ARTIFACT_CONTENTS = {
+    "predictor_bundle": b"canonical-m0-m1-m2-predictor-bundle",
+    "probe": b"probe-artifact",
+    "reality_gate_manifest": b"reality-gate-manifest",
+    "calibration_manifest": b"calibration-manifest",
+}
 
 
 def digest(label: str) -> str:
@@ -53,11 +59,11 @@ def freeze_payload(task) -> dict[str, object]:
             "coefficient_hash": digest("predictor"),
         },
         "artifact_hashes": {
-            "m0_predictor": digest("m0"),
-            "m1_predictor": digest("m1"),
-            "m2_predictor": digest("m2"),
-            "probe": digest("probe-artifact"),
-            "calibration_manifest": digest("calibration-manifest"),
+            name: {
+                "path": f"artifacts/frozen/{name}.bin",
+                "sha256": hashlib.sha256(contents).hexdigest(),
+            }
+            for name, contents in ARTIFACT_CONTENTS.items()
         },
         "alarm_thresholds": {"m0": 0.5, "m1": 0.55, "m2": 0.6},
         "patch_strength": 0.5,
@@ -87,6 +93,10 @@ def ready_repo(tmp_path: Path, guard, payload: dict[str, object]) -> tuple[Path,
     freeze = repo / guard.required_file
     freeze.parent.mkdir()
     freeze.write_text(json.dumps(payload), encoding="utf-8")
+    for name, contents in ARTIFACT_CONTENTS.items():
+        artifact = repo / "artifacts" / "frozen" / f"{name}.bin"
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_bytes(contents)
     git("add", ".")
     git("commit", "-qm", "freeze stage")
     git("tag", guard.required_tag)

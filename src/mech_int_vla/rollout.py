@@ -13,7 +13,7 @@ import math
 import os
 import shutil
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -43,6 +43,9 @@ from .snapshots import LoadedPolicyRuntime
 ARTIFACT_SCHEMA_VERSION = 1
 ACTION_DIMENSION = 7
 PHASES = ("pregrasp", "grasped", "transport", "placed")
+RAW_IMAGE_KEYS = ("agentview_image", "robot0_eye_in_hand_image")
+RAW_IMAGE_SHAPE = (360, 360, 3)
+ACTIVATION_SCORE_STRIDE_STEPS = 5
 
 # Public names match the preregistered calibration-selection candidates.
 ACTIVATION_CANDIDATES: Mapping[str, tuple[str, int | None]] = {
@@ -66,8 +69,10 @@ FRAME_SCALAR_FEATURE_NAMES = (
     "phase_grasped",
     "phase_transport",
     "phase_placed",
-    "symmetry_relative_yaw_sin",
-    "symmetry_relative_yaw_cos",
+    "symmetry_eef_object_yaw_sin",
+    "symmetry_eef_object_yaw_cos",
+    "symmetry_object_goal_yaw_sin",
+    "symmetry_object_goal_yaw_cos",
 )
 
 
@@ -137,6 +142,22 @@ def _assert_runtime_contract(
     expected_flow_model = getattr(policy_runtime.policy, "model", policy_runtime.policy)
     if instrumentation.flow_model is not expected_flow_model:
         raise RolloutError("instrumentation is attached to a different policy model")
+
+
+def _assert_validity_retry_contract(
+    primary: RawLiberoEpisode, retry: RawLiberoEpisode
+) -> None:
+    if retry is primary:
+        raise RolloutError("validity retry must use a fresh RawLiberoEpisode")
+    if retry._has_reset or retry.primary_object_name is not None:
+        raise RolloutError("validity retry RawLiberoEpisode is not fresh")
+    if retry.task != primary.task:
+        raise RolloutError("validity retry task differs from the manifested episode")
+    if (
+        retry.execution != primary.execution
+        or retry.validity_config != primary.validity_config
+    ):
+        raise RolloutError("validity retry runtime configuration differs")
 
 
 def _as_action(value: Any) -> np.ndarray:
@@ -216,6 +237,11 @@ def _quaternion_yaw_wxyz(quaternion: np.ndarray) -> float:
     return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 
 
+def _quaternion_yaw_xyzw(quaternion: np.ndarray) -> float:
+    x, y, z, w = np.asarray(quaternion, dtype=np.float64)
+    return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
 def _frame_scalar_features(
     frame: RawTraceFrame,
     *,
@@ -227,24 +253,30 @@ def _frame_scalar_features(
     eef_object_distance = float(
         np.linalg.norm(frame.primary_object_position - frame.eef_position)
     )
+    eef_object_yaw = _quaternion_yaw_xyzw(
+        frame.eef_quaternion_xyzw
+    ) - _quaternion_yaw_wxyz(frame.primary_object_quaternion_wxyz)
+    eef_object_symmetry_angle = planar_symmetry_order * eef_object_yaw
+    eef_object_yaw_sin = math.sin(eef_object_symmetry_angle)
+    eef_object_yaw_cos = math.cos(eef_object_symmetry_angle)
     if frame.goal_position is None:
         object_goal_distance = math.nan
-        relative_yaw_sin = math.nan
-        relative_yaw_cos = math.nan
+        object_goal_yaw_sin = math.nan
+        object_goal_yaw_cos = math.nan
     else:
         object_goal_distance = float(
             np.linalg.norm(frame.goal_position - frame.primary_object_position)
         )
         if frame.goal_quaternion_wxyz is None:
-            relative_yaw_sin = math.nan
-            relative_yaw_cos = math.nan
+            object_goal_yaw_sin = math.nan
+            object_goal_yaw_cos = math.nan
         else:
-            relative_yaw = _quaternion_yaw_wxyz(
+            object_goal_yaw = _quaternion_yaw_wxyz(
                 frame.primary_object_quaternion_wxyz
             ) - _quaternion_yaw_wxyz(frame.goal_quaternion_wxyz)
-            symmetry_angle = planar_symmetry_order * relative_yaw
-            relative_yaw_sin = math.sin(symmetry_angle)
-            relative_yaw_cos = math.cos(symmetry_angle)
+            object_goal_symmetry_angle = planar_symmetry_order * object_goal_yaw
+            object_goal_yaw_sin = math.sin(object_goal_symmetry_angle)
+            object_goal_yaw_cos = math.cos(object_goal_symmetry_angle)
     phase_features = tuple(float(frame.phase == phase) for phase in PHASES)
     result = np.asarray(
         [
@@ -257,8 +289,10 @@ def _frame_scalar_features(
             float(frame.primary_grasped),
             float(frame.task_success),
             *phase_features,
-            relative_yaw_sin,
-            relative_yaw_cos,
+            eef_object_yaw_sin,
+            eef_object_yaw_cos,
+            object_goal_yaw_sin,
+            object_goal_yaw_cos,
         ],
         dtype=np.float32,
     )
@@ -278,6 +312,25 @@ def _stack_frame_field(
         raise RolloutError(f"frame field {name} changed shape during episode") from exc
 
 
+def _stack_raw_images(
+    frames: Sequence[RawTraceFrame], observation_key: str
+) -> np.ndarray:
+    images: list[np.ndarray] = []
+    for frame in frames:
+        if observation_key not in frame.raw_observation:
+            raise RolloutError(
+                f"raw observation is missing required camera {observation_key!r}"
+            )
+        image = np.asarray(frame.raw_observation[observation_key])
+        if image.shape != RAW_IMAGE_SHAPE or image.dtype != np.uint8:
+            raise RolloutError(
+                f"raw camera {observation_key!r} must be uint8 {RAW_IMAGE_SHAPE}, "
+                f"got dtype={image.dtype} shape={image.shape}"
+            )
+        images.append(image)
+    return np.stack(images)
+
+
 def _trajectory_arrays(
     *,
     episode: RawLiberoEpisode,
@@ -287,6 +340,7 @@ def _trajectory_arrays(
     terminated: Sequence[bool],
     truncated: Sequence[bool],
     activation_values: Mapping[str, Sequence[np.ndarray]],
+    activation_control_steps: Sequence[int],
 ) -> tuple[dict[str, np.ndarray], tuple[str, ...]]:
     if len(frames) != len(actions) + 1:
         raise RolloutError("trajectory must contain one more frame than action")
@@ -300,6 +354,7 @@ def _trajectory_arrays(
         "rewards": np.asarray(rewards, dtype=np.float32),
         "terminated": np.asarray(terminated, dtype=np.bool_),
         "truncated": np.asarray(truncated, dtype=np.bool_),
+        "activation_control_step": np.asarray(activation_control_steps, dtype=np.int32),
         "frame_control_step": np.asarray(
             [frame.control_step for frame in frames], dtype=np.int32
         ),
@@ -308,6 +363,10 @@ def _trajectory_arrays(
         ),
         "frame_policy_state": _stack_frame_field(
             frames, "policy_state", dtype=np.float32
+        ),
+        "frame_agentview_image": _stack_raw_images(frames, "agentview_image"),
+        "frame_robot0_eye_in_hand_image": _stack_raw_images(
+            frames, "robot0_eye_in_hand_image"
         ),
         "frame_eef_position": _stack_frame_field(
             frames, "eef_position", dtype=np.float64
@@ -382,6 +441,10 @@ def _trajectory_arrays(
 
     for candidate in ACTIVATION_CANDIDATES:
         values = activation_values[candidate]
+        if len(values) != len(activation_control_steps):
+            raise RolloutError(
+                f"activation candidate {candidate} is not aligned to scored steps"
+            )
         arrays[f"activation_{candidate}"] = (
             np.stack(values).astype(np.float32, copy=False)
             if values
@@ -501,6 +564,7 @@ def run_single_episode(
     episode_spec: EpisodeSpec,
     condition: ConditionSpec,
     *,
+    validity_retry_factory: Callable[[], RawLiberoEpisode],
     artifact_root: str | Path = Path("artifacts/raw"),
 ) -> EpisodeRunResult:
     """Execute and atomically record one frozen manifest episode.
@@ -516,10 +580,34 @@ def run_single_episode(
     # Fail before the expensive reset/inference path if the destination is unsafe
     # or this manifested cell has already been published.
     _artifact_destination(Path(artifact_root), episode_spec)
+    if not callable(validity_retry_factory):
+        raise RolloutError("validity_retry_factory must construct a fresh runtime")
     _assert_runtime_contract(
         policy_runtime, episode, instrumentation, episode_spec, condition
     )
     reset = episode.reset(seed=episode_spec.reset_seed, condition=condition)
+    retry_payload: dict[str, Any] = {"performed": False}
+    if not reset.validity.valid:
+        retry_episode = validity_retry_factory()
+        _assert_validity_retry_contract(episode, retry_episode)
+        try:
+            retry_reset = retry_episode.reset(
+                seed=episode_spec.reset_seed, condition=condition
+            )
+            retry_payload = {
+                "performed": True,
+                "same_reset_seed_and_condition": True,
+                "validity": _validity_payload(retry_reset.validity),
+                "settle_actions": retry_reset.settle_actions,
+                "agrees_on_invalidity": not retry_reset.validity.valid,
+                "agrees_on_reasons": (
+                    retry_reset.validity.reasons == reset.validity.reasons
+                ),
+            }
+        finally:
+            retry_close = getattr(retry_episode, "close", None)
+            if callable(retry_close):
+                retry_close()
     frames = [reset.frame]
     actions: list[np.ndarray] = []
     rewards: list[float] = []
@@ -528,6 +616,7 @@ def run_single_episode(
     activation_values: dict[str, list[np.ndarray]] = {
         candidate: [] for candidate in ACTIVATION_CANDIDATES
     }
+    activation_control_steps: list[int] = []
 
     final_terminated = False
     final_truncated = False
@@ -538,15 +627,23 @@ def run_single_episode(
             raise RolloutError("loaded policy does not expose reset()")
         reset_policy()
         observation = reset.observation
-        with instrumentation, torch.inference_mode():
+        with torch.inference_mode():
             while not episode.terminal:
-                instrumentation.clear()
                 processed = policy_runtime.preprocess_observation(
                     dict(observation), task=episode.task.language
                 )
-                selected_action = policy_runtime.policy.select_action(processed)
+                score_state = (
+                    frames[-1].control_step % ACTIVATION_SCORE_STRIDE_STEPS == 0
+                )
+                if score_state:
+                    instrumentation.clear()
+                    with instrumentation:
+                        selected_action = policy_runtime.policy.select_action(processed)
+                    captured = _collect_activation_candidates(instrumentation)
+                else:
+                    selected_action = policy_runtime.policy.select_action(processed)
+                    captured = None
                 action = _as_action(policy_runtime.postprocessor(selected_action))
-                captured = _collect_activation_candidates(instrumentation)
                 step = episode.step(action)
 
                 actions.append(action)
@@ -554,8 +651,10 @@ def run_single_episode(
                 terminated_flags.append(step.terminated)
                 truncated_flags.append(step.truncated)
                 frames.append(step.frame)
-                for candidate, value in captured.items():
-                    activation_values[candidate].append(value)
+                if captured is not None:
+                    activation_control_steps.append(frames[-2].control_step)
+                    for candidate, value in captured.items():
+                        activation_values[candidate].append(value)
                 observation = step.observation
                 final_terminated = step.terminated
                 final_truncated = step.truncated
@@ -580,11 +679,20 @@ def run_single_episode(
         terminated=terminated_flags,
         truncated=truncated_flags,
         activation_values=activation_values,
+        activation_control_steps=activation_control_steps,
     )
     metadata = {
         "schema_version": ARTIFACT_SCHEMA_VERSION,
         "episode": episode_spec.to_dict(),
         "task_language": episode.task.language,
+        "task": {
+            "rank": episode.task.rank,
+            "suite": episode.task.suite,
+            "task_id": episode.task.task_id,
+            "language": episode.task.language,
+            "primary_object": episode.task.primary_object,
+            "planar_symmetry_order": episode.task.planar_symmetry_order,
+        },
         "condition": {
             "name": condition.name,
             "family": condition.family,
@@ -603,6 +711,7 @@ def run_single_episode(
             "closed_loop_replanning": True,
         },
         "validity": _validity_payload(reset.validity),
+        "validity_retry": retry_payload,
         "outcome": {
             "status": status,
             "success": success,
@@ -614,13 +723,18 @@ def run_single_episode(
         },
         "capture": {
             "policy_select_calls": len(actions),
-            "instrumented_internal_calls": 11 * len(actions),
+            "scored_policy_select_calls": len(activation_control_steps),
+            "score_stride_steps": ACTIVATION_SCORE_STRIDE_STEPS,
+            "instrumented_internal_calls": 11 * len(activation_control_steps),
             "activation_candidates": list(ACTIVATION_CANDIDATES),
             "activation_dtype": "float32",
             "frame_count": len(frames),
             "frame_scalar_feature_names": FRAME_SCALAR_FEATURE_NAMES,
             "task_predicate_names": predicate_names,
-            "raw_images_stored": False,
+            "raw_images_stored": True,
+            "raw_image_encoding": "lossless_uint8_npz_deflate",
+            "raw_image_observation_keys": RAW_IMAGE_KEYS,
+            "raw_image_shape": RAW_IMAGE_SHAPE,
         },
         "files": {"trajectory": "trajectory.npz"},
     }
@@ -643,8 +757,11 @@ def run_single_episode(
 
 __all__ = [
     "ACTIVATION_CANDIDATES",
+    "ACTIVATION_SCORE_STRIDE_STEPS",
     "ARTIFACT_SCHEMA_VERSION",
     "FRAME_SCALAR_FEATURE_NAMES",
+    "RAW_IMAGE_KEYS",
+    "RAW_IMAGE_SHAPE",
     "EpisodeRunResult",
     "RolloutError",
     "run_single_episode",

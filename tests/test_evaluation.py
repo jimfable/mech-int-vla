@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import numpy as np
 import pytest
 
+from mech_int_vla.config import SplitName, TaskSpec
 from mech_int_vla.evaluation import (
     EpisodePredictions,
     EvaluationError,
@@ -17,11 +19,13 @@ from mech_int_vla.evaluation import (
     dynamic_range_gate_decision,
     episode_primary_log_loss,
     first_alarm_time,
+    locked_test_paired_prediction_comparison,
     paired_lead_time_summary,
     paired_prediction_comparison,
     reproduction_gate_decision,
     wilson_interval,
 )
+from mech_int_vla.manifest import EpisodeSpec, Manifest
 
 
 def episode(
@@ -40,6 +44,60 @@ def episode(
         scores={index * stride: score for index, score in enumerate(scores)},
         failure_step=failure_step,
     )
+
+
+def locked_manifest() -> Manifest:
+    task = TaskSpec(
+        rank=1,
+        suite="libero_object",
+        task_id=5,
+        language="pick up the black book",
+        primary_object="black_book",
+        planar_symmetry_order=2,
+    )
+    episodes = tuple(
+        EpisodeSpec(
+            suite=task.suite,
+            task_id=task.task_id,
+            task_rank=task.rank,
+            split=SplitName.LOCKED_TEST,
+            base_init_state_id=init_id,
+            condition_index=cell,
+            condition_name=f"condition-{cell}",
+            condition_family="iid" if cell == 0 else "perturbation",
+            condition_parameters={"cell": cell},
+            reset_seed=100_000 + init_id * 10 + cell,
+            inference_seed=200_000 + init_id * 10 + cell,
+            policy_revision="3" * 40,
+            code_commit="a" * 40,
+        )
+        for init_id in range(30, 50)
+        for cell in range(8)
+    )
+    return Manifest(
+        schema_version=1, split=SplitName.LOCKED_TEST, task=task, episodes=episodes
+    )
+
+
+def locked_predictions(
+    manifest: Manifest,
+) -> tuple[list[EpisodePredictions], list[EpisodePredictions]]:
+    model1: list[EpisodePredictions] = []
+    model2: list[EpisodePredictions] = []
+    for specification in manifest.episodes:
+        label = specification.base_init_state_id % 2
+        model1_score = 0.6 if label else 0.4
+        model2_score = 0.8 if label else 0.2
+        common = {
+            "episode_id": specification.episode_id,
+            "init_id": specification.base_init_state_id,
+            "label": label,
+            "manifest_metadata": specification.to_dict(),
+            "valid_reset": True,
+        }
+        model1.append(EpisodePredictions(scores={0: model1_score}, **common))
+        model2.append(EpisodePredictions(scores={0: model2_score}, **common))
+    return model1, model2
 
 
 def test_log_loss_clips_extreme_probabilities_and_brier_is_unclipped() -> None:
@@ -107,6 +165,100 @@ def test_paired_prediction_estimand_and_decision_flag() -> None:
     assert result.primary_claim_succeeds
     assert result.model2_brier < result.model1_brier
     assert result.model2_auroc == 1.0
+
+
+def test_confirmatory_comparison_requires_exact_locked_test_coverage() -> None:
+    manifest = locked_manifest()
+    model1, model2 = locked_predictions(manifest)
+    result = locked_test_paired_prediction_comparison(
+        manifest,
+        model1,
+        model2,
+        bootstrap_replicates=100,
+        bootstrap_seed=17,
+    )
+    assert result.episodes == 160
+    assert result.clusters == 20
+    assert result.primary_claim_succeeds
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (lambda first, second: first.pop(), "coverage mismatch"),
+        (
+            lambda first, second: first[0].manifest_metadata.update(
+                {"condition_index": 99}
+            ),
+            "manifest metadata mismatch",
+        ),
+        (
+            lambda first, second: first.__setitem__(
+                0,
+                EpisodePredictions(
+                    **{
+                        **first[0].__dict__,
+                        "valid_reset": False,
+                    }
+                ),
+            ),
+            "invalid or lacks validity metadata",
+        ),
+    ],
+)
+def test_confirmatory_comparison_rejects_missing_mismatched_or_invalid_cells(
+    mutation, message: str
+) -> None:
+    manifest = locked_manifest()
+    model1, model2 = locked_predictions(manifest)
+    mutation(model1, model2)
+    with pytest.raises(EvaluationError, match=message):
+        locked_test_paired_prediction_comparison(
+            manifest, model1, model2, bootstrap_replicates=2
+        )
+
+
+def test_confirmatory_comparison_rejects_wrong_split_or_grid_shape() -> None:
+    manifest = locked_manifest()
+    model1, model2 = locked_predictions(manifest)
+    wrong_split = Manifest(
+        schema_version=manifest.schema_version,
+        split=SplitName.CALIBRATION,
+        task=manifest.task,
+        episodes=manifest.episodes,
+    )
+    with pytest.raises(EvaluationError, match="locked_test manifest"):
+        locked_test_paired_prediction_comparison(
+            wrong_split, model1, model2, bootstrap_replicates=2
+        )
+
+    undersized = Manifest(
+        schema_version=1,
+        split=SplitName.LOCKED_TEST,
+        task=manifest.task,
+        episodes=manifest.episodes[:-8],
+    )
+    with pytest.raises(EvaluationError, match="IDs 30 through 49"):
+        locked_test_paired_prediction_comparison(
+            undersized, model1[:-8], model2[:-8], bootstrap_replicates=2
+        )
+
+    wrong_cells = list(manifest.episodes)
+    wrong_cells[7] = replace(wrong_cells[7], condition_index=8)
+    malformed_grid = Manifest(
+        schema_version=1,
+        split=SplitName.LOCKED_TEST,
+        task=manifest.task,
+        episodes=tuple(wrong_cells),
+    )
+    malformed_model1, malformed_model2 = locked_predictions(malformed_grid)
+    with pytest.raises(EvaluationError, match="condition indices 0 through 7"):
+        locked_test_paired_prediction_comparison(
+            malformed_grid,
+            malformed_model1,
+            malformed_model2,
+            bootstrap_replicates=2,
+        )
 
 
 @pytest.mark.parametrize(

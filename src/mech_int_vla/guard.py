@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
+import stat
 import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .config import (
@@ -360,6 +362,11 @@ def _validate_predictor_hyperparameters(
             raise LockedTestGuardError(
                 "predictor.hyperparameters.max_iter is too large"
             )
+        if candidate.family == "histogram_gradient_boosting" and max_iter != 200:
+            raise LockedTestGuardError(
+                "predictor.hyperparameters.max_iter must be exactly 200 for "
+                "histogram_gradient_boosting"
+            )
 
 
 def _validate_predictor(
@@ -383,13 +390,66 @@ def _validate_predictor(
     _validate_sha256(predictor.get("coefficient_hash"), "predictor.coefficient_hash")
 
 
-def _validate_artifact_hashes(payload: Mapping[str, Any]) -> None:
+def _safe_artifact_path(repo: Path, raw_path: Any, *, name: str) -> tuple[Path, str]:
+    if not isinstance(raw_path, str) or _is_placeholder(raw_path):
+        raise LockedTestGuardError(
+            f"artifact_hashes.{name}.path must be a meaningful repository-relative path"
+        )
+    if "\\" in raw_path:
+        raise LockedTestGuardError(
+            f"artifact_hashes.{name}.path must use repository-relative POSIX syntax"
+        )
+    relative = PurePosixPath(raw_path)
+    if (
+        relative.is_absolute()
+        or not relative.parts
+        or any(part in {"", ".", ".."} for part in relative.parts)
+        or relative.as_posix() != raw_path
+    ):
+        raise LockedTestGuardError(
+            f"artifact_hashes.{name}.path must be a safe repository-relative path"
+        )
+
+    candidate = repo.joinpath(*relative.parts)
+    current = repo
+    for component in relative.parts:
+        current = current / component
+        if current.is_symlink():
+            raise LockedTestGuardError(
+                f"artifact_hashes.{name}.path must not contain symlinks"
+            )
+    try:
+        mode = candidate.stat().st_mode
+    except OSError as exc:
+        raise LockedTestGuardError(
+            f"artifact_hashes.{name}.path is missing or unreadable: {candidate}"
+        ) from exc
+    if not stat.S_ISREG(mode):
+        raise LockedTestGuardError(
+            f"artifact_hashes.{name}.path must identify a regular file"
+        )
+    return candidate, relative.as_posix()
+
+
+def _stream_sha256(path: Path, *, name: str) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+    except OSError as exc:
+        raise LockedTestGuardError(
+            f"could not hash artifact_hashes.{name}.path: {exc}"
+        ) from exc
+    return digest.hexdigest()
+
+
+def _validate_artifact_hashes(repo: Path, payload: Mapping[str, Any]) -> None:
     hashes = _required_mapping(payload, "artifact_hashes", LockedTestGuardError)
     required = {
-        "m0_predictor",
-        "m1_predictor",
-        "m2_predictor",
+        "predictor_bundle",
         "probe",
+        "reality_gate_manifest",
         "calibration_manifest",
     }
     missing = required - hashes.keys()
@@ -397,21 +457,39 @@ def _validate_artifact_hashes(payload: Mapping[str, Any]) -> None:
         raise LockedTestGuardError(
             "artifact_hashes is missing: " + ", ".join(sorted(missing))
         )
-    for name, digest in hashes.items():
+    declarations: dict[str, tuple[Any, str]] = {}
+    for name, declaration in hashes.items():
         if not isinstance(name, str) or _is_placeholder(name):
             raise LockedTestGuardError(
                 "artifact_hashes keys must be meaningful strings"
             )
-        _validate_sha256(digest, f"artifact_hashes.{name}")
-    predictor_hashes = {
-        hashes["m0_predictor"],
-        hashes["m1_predictor"],
-        hashes["m2_predictor"],
-    }
-    if len(predictor_hashes) != 3:
-        raise LockedTestGuardError(
-            "M0, M1, and M2 predictor artifact hashes must be distinct"
-        )
+        if not isinstance(declaration, dict) or set(declaration) != {"path", "sha256"}:
+            raise LockedTestGuardError(
+                f"artifact_hashes.{name} must have exactly: path, sha256"
+            )
+        digest = declaration.get("sha256")
+        _validate_sha256(digest, f"artifact_hashes.{name}.sha256")
+        declarations[name] = (declaration.get("path"), str(digest))
+    for name, (raw_path, expected_digest) in declarations.items():
+        artifact, relative = _safe_artifact_path(repo, raw_path, name=name)
+        try:
+            _git(
+                repo,
+                LockedTestGuardError,
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                relative,
+            )
+        except ProtocolGuardError as exc:
+            raise LockedTestGuardError(
+                f"artifact_hashes.{name}.path must be tracked in the lock commit"
+            ) from exc
+        actual_digest = _stream_sha256(artifact, name=name)
+        if actual_digest != expected_digest:
+            raise LockedTestGuardError(
+                f"artifact_hashes.{name}.sha256 does not match the artifact bytes"
+            )
 
 
 def _validate_alarm_thresholds(payload: Mapping[str, Any]) -> None:
@@ -421,16 +499,23 @@ def _validate_alarm_thresholds(payload: Mapping[str, Any]) -> None:
         raise LockedTestGuardError(
             "alarm_thresholds is missing: " + ", ".join(sorted(missing))
         )
+    never_alarm = math.nextafter(1.0, math.inf)
     for model, threshold in thresholds.items():
+        numeric = (
+            float(threshold)
+            if not isinstance(threshold, bool) and isinstance(threshold, (int, float))
+            else math.nan
+        )
         if (
             not isinstance(model, str)
             or isinstance(threshold, bool)
             or not isinstance(threshold, (int, float))
-            or not math.isfinite(float(threshold))
-            or not 0.0 <= float(threshold) <= 1.0
+            or not math.isfinite(numeric)
+            or not (0.0 <= numeric <= 1.0 or numeric == never_alarm)
         ):
             raise LockedTestGuardError(
-                f"alarm_thresholds.{model} must be a finite probability"
+                f"alarm_thresholds.{model} must be in [0, 1] or the exact "
+                "nextafter(1, +inf) never-alarm sentinel"
             )
 
 
@@ -546,7 +631,7 @@ def assert_locked_test_ready(
     _validate_policy_revision(payload, policy_revision, LockedTestGuardError)
     _validate_representation(payload, selection)
     _validate_predictor(payload, selection)
-    _validate_artifact_hashes(payload)
+    _validate_artifact_hashes(repo, payload)
     _validate_alarm_thresholds(payload)
     patch_strength = payload.get("patch_strength")
     if not _value_is_allowed(patch_strength, selection.patch_strength_candidates):

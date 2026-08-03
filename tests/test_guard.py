@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import subprocess
 from copy import deepcopy
 from pathlib import Path
@@ -18,6 +19,12 @@ from mech_int_vla.guard import (
 
 ROOT = Path(__file__).parents[1]
 POLICY = "31d453f7edd78c839a8bbc39744a292686daf0de"
+ARTIFACT_CONTENTS = {
+    "predictor_bundle": b"canonical-m0-m1-m2-predictor-bundle",
+    "probe": b"probe-artifact",
+    "reality_gate_manifest": b"reality-gate-manifest",
+    "calibration_manifest": b"calibration-manifest",
+}
 
 
 def digest(label: str) -> str:
@@ -57,11 +64,11 @@ def calibration_payload(task) -> dict[str, object]:
             "coefficient_hash": digest("predictor-coefficients"),
         },
         "artifact_hashes": {
-            "m0_predictor": digest("m0"),
-            "m1_predictor": digest("m1"),
-            "m2_predictor": digest("m2"),
-            "probe": digest("probe-artifact"),
-            "calibration_manifest": digest("calibration-manifest"),
+            name: {
+                "path": f"artifacts/frozen/{name}.bin",
+                "sha256": hashlib.sha256(contents).hexdigest(),
+            }
+            for name, contents in ARTIFACT_CONTENTS.items()
         },
         "alarm_thresholds": {"m0": 0.5, "m1": 0.55, "m2": 0.6},
         "patch_strength": 0.5,
@@ -94,6 +101,10 @@ def locked_repo(
     freeze = repo / path
     freeze.parent.mkdir(parents=True)
     freeze.write_text(json.dumps(payload), encoding="utf-8")
+    for name, contents in ARTIFACT_CONTENTS.items():
+        artifact = repo / "artifacts" / "frozen" / f"{name}.bin"
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_bytes(contents)
     git(repo, "add", ".")
     git(repo, "commit", "-qm", "freeze stage")
     git(repo, "tag", tag)
@@ -312,14 +323,14 @@ def test_locked_guard_rejects_task_and_policy_mismatches(
             "coefficient_hash",
         ),
         (
-            lambda payload: payload["artifact_hashes"].update(
-                {"m2_predictor": payload["artifact_hashes"]["m1_predictor"]}
-            ),
-            "must be distinct",
-        ),
-        (
             lambda payload: payload["artifact_hashes"].pop("calibration_manifest"),
             "artifact_hashes is missing",
+        ),
+        (
+            lambda payload: payload["artifact_hashes"].update(
+                {"probe": digest("probe-artifact")}
+            ),
+            "must have exactly: path, sha256",
         ),
         (
             lambda payload: payload.update(
@@ -426,3 +437,172 @@ def test_locked_guard_accepts_configured_histogram_boosting(
         policy_revision=POLICY,
         selection=protocol.split.calibration_selection,
     )
+
+
+def test_locked_guard_requires_histogram_boosting_max_iter_exactly_200(
+    protocol, tmp_path: Path
+) -> None:
+    task = protocol.task_order.tasks[0]
+    config = protocol.split.locked_test_guard
+    payload = calibration_payload(task)
+    payload["predictor"] = {
+        "family": "histogram_gradient_boosting",
+        "hyperparameters": {
+            "learning_rate": 0.03,
+            "max_leaf_nodes": 7,
+            "min_samples_leaf": 10,
+            "l2_regularization": 0,
+            "max_iter": 199,
+        },
+        "coefficient_hash": digest("boosting-model"),
+    }
+    repo = locked_repo(
+        tmp_path, path=config.required_file, tag=config.required_tag, payload=payload
+    )
+
+    with pytest.raises(LockedTestGuardError, match="exactly 200"):
+        assert_locked_test_ready(
+            repo,
+            config,
+            task=task,
+            policy_revision=POLICY,
+            selection=protocol.split.calibration_selection,
+        )
+
+
+def test_locked_guard_accepts_only_the_exact_never_alarm_sentinel(
+    protocol, tmp_path: Path
+) -> None:
+    task = protocol.task_order.tasks[0]
+    config = protocol.split.locked_test_guard
+    payload = calibration_payload(task)
+    payload["alarm_thresholds"]["m1"] = math.nextafter(1.0, math.inf)
+    repo = locked_repo(
+        tmp_path, path=config.required_file, tag=config.required_tag, payload=payload
+    )
+    assert_locked_test_ready(
+        repo,
+        config,
+        task=task,
+        policy_revision=POLICY,
+        selection=protocol.split.calibration_selection,
+    )
+
+    second = tmp_path / "second"
+    second.mkdir()
+    invalid = calibration_payload(task)
+    invalid["alarm_thresholds"]["m1"] = math.nextafter(
+        math.nextafter(1.0, math.inf), math.inf
+    )
+    repo = locked_repo(
+        second, path=config.required_file, tag=config.required_tag, payload=invalid
+    )
+    with pytest.raises(LockedTestGuardError, match="never-alarm sentinel"):
+        assert_locked_test_ready(
+            repo,
+            config,
+            task=task,
+            policy_revision=POLICY,
+            selection=protocol.split.calibration_selection,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda declaration: declaration.update({"path": "../outside.bin"}),
+            "safe repository-relative path",
+        ),
+        (
+            lambda declaration: declaration.update({"path": "/tmp/outside.bin"}),
+            "safe repository-relative path",
+        ),
+        (
+            lambda declaration: declaration.update(
+                {"path": "artifacts/frozen/missing.bin"}
+            ),
+            "missing or unreadable",
+        ),
+        (
+            lambda declaration: declaration.update({"sha256": digest("wrong")}),
+            "does not match the artifact bytes",
+        ),
+    ],
+)
+def test_locked_guard_rejects_unsafe_missing_or_mismatched_artifacts(
+    protocol, tmp_path: Path, mutate, message: str
+) -> None:
+    task = protocol.task_order.tasks[0]
+    config = protocol.split.locked_test_guard
+    payload = calibration_payload(task)
+    mutate(payload["artifact_hashes"]["probe"])
+    repo = locked_repo(
+        tmp_path, path=config.required_file, tag=config.required_tag, payload=payload
+    )
+
+    with pytest.raises(LockedTestGuardError, match=message):
+        assert_locked_test_ready(
+            repo,
+            config,
+            task=task,
+            policy_revision=POLICY,
+            selection=protocol.split.calibration_selection,
+        )
+
+
+def test_locked_guard_rejects_symlink_and_untracked_artifacts(
+    protocol, tmp_path: Path
+) -> None:
+    task = protocol.task_order.tasks[0]
+    config = protocol.split.locked_test_guard
+
+    symlink_case = tmp_path / "symlink"
+    symlink_case.mkdir()
+    payload = calibration_payload(task)
+    payload["artifact_hashes"]["probe"]["path"] = "artifacts/frozen/probe-link.bin"
+    repo = locked_repo(
+        symlink_case,
+        path=config.required_file,
+        tag=config.required_tag,
+        payload=payload,
+    )
+    (repo / "artifacts/frozen/probe-link.bin").symlink_to("probe.bin")
+    git(repo, "add", "artifacts/frozen/probe-link.bin")
+    git(repo, "commit", "--amend", "-qm", "freeze symlink")
+    git(repo, "tag", "-f", config.required_tag)
+    with pytest.raises(LockedTestGuardError, match="must not contain symlinks"):
+        assert_locked_test_ready(
+            repo,
+            config,
+            task=task,
+            policy_revision=POLICY,
+            selection=protocol.split.calibration_selection,
+        )
+
+    untracked_case = tmp_path / "untracked"
+    untracked_case.mkdir()
+    payload = calibration_payload(task)
+    payload["artifact_hashes"]["probe"]["path"] = "artifacts/frozen/untracked.bin"
+    repo = locked_repo(
+        untracked_case,
+        path=config.required_file,
+        tag=config.required_tag,
+        payload=payload,
+    )
+    untracked = repo / "artifacts/frozen/untracked.bin"
+    untracked.write_bytes(ARTIFACT_CONTENTS["probe"])
+    (repo / ".gitignore").write_text(
+        "artifacts/frozen/untracked.bin\n", encoding="utf-8"
+    )
+    git(repo, "add", ".gitignore")
+    git(repo, "commit", "--amend", "-qm", "freeze with ignored artifact")
+    git(repo, "tag", "-f", config.required_tag)
+    with pytest.raises(LockedTestGuardError, match="tracked in the lock commit"):
+        assert_locked_test_ready(
+            repo,
+            config,
+            task=task,
+            policy_revision=POLICY,
+            selection=protocol.split.calibration_selection,
+        )

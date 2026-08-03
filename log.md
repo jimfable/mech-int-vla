@@ -298,7 +298,7 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Artifacts:** `src/mech_int_vla/rollout.py`, `tests/test_rollout.py`.
 - **Compute / cost:** laptop-only synthetic tests while the GPU remained inactive.
 
-### 2026-08-03 11:39 CEST — SETUP-008: freeze downstream analysis machinery before outcomes
+### 2026-08-03 11:14 CEST — SETUP-008: freeze downstream analysis machinery before outcomes
 
 - **Stage:** setup
 - **Question:** Can the preregistered probe, failure-predictor, and confirmatory
@@ -344,3 +344,57 @@ that experiments, negative results, decisions, and confidence can be audited.
   test modules, and the optional `modeling` dependency in `pyproject.toml`.
 - **Compute / cost:** laptop-only synthetic tests while the GPU remained
   inactive/unreachable; no model forward passes or simulator steps.
+
+### 2026-08-03 11:40 CEST — SETUP-009: close capture, ingestion, causal, and lock-integrity gaps
+
+- **Stage:** setup
+- **Question:** Does the pre-outcome pipeline faithfully preserve the raw inputs,
+  five-step scoring cadence, invalid-reset rule, causal controls, and Locked Test
+  integrity needed for the registered claims?
+- **Pre-state / commit:** `689caf0fd9cecdeb433b3cbda4dfac67cd011967`;
+  no successful simulator reset, policy action, or research outcome was available.
+- **Method:** Ran an independent line-by-line protocol/code audit, then split the
+  fixes across isolated artifact-ingestion, causal-analysis, and lock-integrity
+  workstreams. Added lossless uint8 storage for both 360x360 camera streams; limited
+  activation hooks to pre-action steps divisible by five; implemented the single
+  identical invalid-reset retry in a fresh runtime; and separated end-effector/object
+  from object/goal symmetry scalars. Built a safe exact-set artifact loader and
+  outcome-independent probe-cohort assembler. Implemented deterministic three-seed
+  causal matching, rank-two probe/random projectors, first-ten-action effects, 5-NN
+  checks, cluster intervals, and confirmatory decision flags. Hardened snapshot and
+  lock guards with streamed byte hashes, tracked regular-file declarations, the
+  exact HGB iteration count, the exact conservative alarm sentinel, and an exact
+  20-init by 8-cell Locked Test evaluation entry point.
+- **Inputs and controls:** Synthetic images, actions, poses, activations, manifests,
+  labels, and temporary Git repositories only. Artifact rows are selected by reset
+  validity and control-step stride before failure labels are attached. The real
+  policy checkpoint bytes were not reloaded and no raw experiment artifact existed.
+- **Results:** The executor metadata and trajectory schema now agree on 16 scalar
+  features, raw-image provenance, scored control steps, retry provenance, and task
+  semantics. The loader rejects unsafe archives, schema/cardinality/type drift,
+  mixed task/split/revision/code cohorts, duplicates, and incomplete requested sets;
+  it derives the registered relative yaw with the correct XYZW/WXYZ conventions.
+  Causal controls enforce rank two, all three fixed alphas, norm matching, 1,000
+  random controls, and at least 30 valid pairs. Confirmatory prediction evaluation
+  refuses anything other than the exact Locked Test manifest and complete paired
+  valid predictions. The full repository passes 153 tests plus Ruff lint/format,
+  byte-compilation, and whitespace checks.
+- **Interpretation:** The audit found material data-integrity defects that synthetic
+  success-path tests had not exposed, but none involved empirical selection. Their
+  correction before the first valid reset reduces both silent protocol drift and
+  the chance that an incomplete Locked Test could be reported as confirmatory.
+- **Confidence:** high for the encoded fail-closed contracts and synthetic replay;
+  medium for real memory/runtime cost of lossless camera artifacts and repeated
+  instrumentation installation until the first GPU episode exercises them.
+- **Decision:** Freeze and publish this complete pre-outcome milestone. Do not start
+  feature extraction until the remaining action-standardization and causal
+  aggregation choices are written prospectively. Keep the same first manifested
+  Discovery cell for the next GPU attempt.
+- **Next step:** finish the prospective feature/causal operationalization, push and
+  sync the commit, then stage the verified LIBERO asset archive and retry task rank
+  1, init 0, IID on the original Vast disk as soon as it is schedulable.
+- **Artifacts:** `src/mech_int_vla/{rollout,artifacts,causal,snapshots,guard,evaluation}.py`,
+  `src/mech_int_vla/runtime_cli.py`, their regression tests, and this log.
+- **Compute / cost:** laptop-only synthetic tests; Vast remained inactive at the
+  previously verified `$0.037/hr` storage rate and the SSH endpoint never reached a
+  server banner. Zero model forwards and zero simulator control steps.

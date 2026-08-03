@@ -7,14 +7,19 @@ implements only the estimands fixed in :mod:`PREREG.md`.
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 from numbers import Integral
 from statistics import NormalDist
+from typing import Any
 
 import numpy as np
+
+from .config import SplitName
+from .manifest import Manifest
 
 PRIMARY_STEPS = (0, 50, 100, 150, 200)
 PROBABILITY_CLIP = 1e-6
@@ -33,6 +38,8 @@ class EpisodePredictions:
     label: int
     scores: Mapping[int, float]
     failure_step: int | None = None
+    manifest_metadata: Mapping[str, Any] | None = None
+    valid_reset: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -501,6 +508,118 @@ def paired_prediction_comparison(
         clusters=bootstrap.clusters,
         primary_claim_succeeds=claim,
     )
+
+
+def _canonical_metadata(value: Mapping[str, Any]) -> str:
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as exc:
+        raise EvaluationError(f"manifest metadata is not finite JSON: {exc}") from exc
+
+
+def validate_locked_test_prediction_coverage(
+    expected_manifest: Manifest,
+    model1: Sequence[EpisodePredictions],
+    model2: Sequence[EpisodePredictions],
+) -> None:
+    """Require the complete preregistered 20-by-8 Locked Test grid.
+
+    This is intentionally separate from the generic paired estimator: exploratory
+    comparisons remain reusable, while any confirmatory claim must pass exact
+    manifest, validity, and pairing checks first.
+    """
+
+    if not isinstance(expected_manifest, Manifest):
+        raise EvaluationError("expected_manifest must be a Manifest")
+    if expected_manifest.schema_version != 1:
+        raise EvaluationError("Locked Test requires manifest schema_version 1")
+    if expected_manifest.split is not SplitName.LOCKED_TEST:
+        raise EvaluationError("confirmatory evaluation requires a locked_test manifest")
+
+    expected_by_id: dict[str, Any] = {}
+    cells_by_init: dict[Hashable, set[int]] = {}
+    for specification in expected_manifest.episodes:
+        if specification.split is not SplitName.LOCKED_TEST:
+            raise EvaluationError("manifest contains a non-locked_test episode")
+        if (
+            specification.suite != expected_manifest.task.suite
+            or specification.task_id != expected_manifest.task.task_id
+            or specification.task_rank != expected_manifest.task.rank
+        ):
+            raise EvaluationError("manifest episode metadata does not match its task")
+        if specification.episode_id in expected_by_id:
+            raise EvaluationError("locked_test manifest contains duplicate episode IDs")
+        expected_by_id[specification.episode_id] = specification
+        cells_by_init.setdefault(specification.base_init_state_id, set()).add(
+            specification.condition_index
+        )
+    if set(cells_by_init) != set(range(30, 50)):
+        raise EvaluationError(
+            "locked_test manifest init clusters must be exactly IDs 30 through 49"
+        )
+    expected_cells = set(range(8))
+    if any(cells != expected_cells for cells in cells_by_init.values()):
+        raise EvaluationError(
+            "locked_test manifest cells must be exactly condition indices 0 through 7 "
+            "for every init cluster"
+        )
+    if len(expected_by_id) != 160:
+        raise EvaluationError("locked_test manifest must contain exactly 160 episodes")
+
+    indexed_models = (
+        _episodes_by_id(model1, "model1"),
+        _episodes_by_id(model2, "model2"),
+    )
+    expected_ids = set(expected_by_id)
+    for model_name, indexed in zip(("model1", "model2"), indexed_models, strict=True):
+        actual_ids = set(indexed)
+        if actual_ids != expected_ids:
+            missing = sorted(expected_ids - actual_ids)
+            extra = sorted(actual_ids - expected_ids)
+            raise EvaluationError(
+                f"{model_name} locked_test coverage mismatch; "
+                f"missing={missing}, extra={extra}"
+            )
+        for episode_id, prediction in indexed.items():
+            specification = expected_by_id[episode_id]
+            if prediction.valid_reset is not True:
+                raise EvaluationError(
+                    f"{model_name} episode {episode_id!r} is invalid or lacks validity metadata"
+                )
+            if prediction.init_id != specification.base_init_state_id:
+                raise EvaluationError(
+                    f"{model_name} init metadata mismatch for episode {episode_id!r}"
+                )
+            if not isinstance(prediction.manifest_metadata, Mapping):
+                raise EvaluationError(
+                    f"{model_name} episode {episode_id!r} lacks manifest metadata"
+                )
+            if _canonical_metadata(prediction.manifest_metadata) != _canonical_metadata(
+                specification.to_dict()
+            ):
+                raise EvaluationError(
+                    f"{model_name} manifest metadata mismatch for episode {episode_id!r}"
+                )
+
+    _paired_episodes(model1, model2)
+
+
+def locked_test_paired_prediction_comparison(
+    expected_manifest: Manifest,
+    model1: Sequence[EpisodePredictions],
+    model2: Sequence[EpisodePredictions],
+    **comparison_options: Any,
+) -> PairedPredictionResult:
+    """Run the primary comparison only after exact Locked Test coverage validation."""
+
+    validate_locked_test_prediction_coverage(expected_manifest, model1, model2)
+    return paired_prediction_comparison(model1, model2, **comparison_options)
 
 
 def first_alarm_time(

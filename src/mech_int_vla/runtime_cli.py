@@ -218,6 +218,12 @@ def _discovery_rollout(args: argparse.Namespace) -> int:
             instrumentation,
             episode_spec,
             condition,
+            validity_retry_factory=lambda: RawLiberoEpisode.create(
+                task,
+                base_init_state_id=args.init_id,
+                execution=config.split.policy_execution,
+                validity=config.perturbations.validity,
+            ),
             artifact_root=args.artifact_root,
         )
         print(

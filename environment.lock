@@ -7,6 +7,10 @@ policy_num_flow_steps = 10
 policy_chunk_size = 50
 policy_n_action_steps = 1
 
+base_vlm_repo = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
+base_vlm_revision = "7b375e1b73b11138ff12fe22c8f2822d8fe03467"
+base_vlm_loading = "config/tokenizer-only local snapshot; strict full-state policy load"
+
 dataset_repo = "lerobot/libero"
 dataset_revision = "a1aaacb7f6cd6ee5fb43120f673cebb0cfea7dd4"
 
@@ -14,14 +18,24 @@ lerobot_repository = "https://github.com/huggingface/lerobot.git"
 lerobot_tag = "v0.6.0"
 lerobot_commit = "30da8e687a6dfc617fcd94afc367ac7071c376ce"
 
-libero_repository = "https://github.com/huggingface/lerobot-libero.git"
-libero_commit = "PENDING_ENVIRONMENT_RESOLUTION"
+libero_repository = "https://github.com/huggingface/LIBERO.git"
+libero_commit = "8561c60eea2fb93096146f240194649df73d8b1e"
+libero_distribution = "hf-libero==0.1.4"
 
-python_version = "PENDING_ENVIRONMENT_RESOLUTION"
-torch_version = "PENDING_ENVIRONMENT_RESOLUTION"
-cuda_version = "PENDING_ENVIRONMENT_RESOLUTION"
-gpu_name = "NVIDIA GeForce RTX 5090 (provider configuration; verify at runtime)"
+python_version = "3.12.13"
+torch_version = "2.11.0+cu130"
+torchvision_version = "0.26.0+cu130"
+cuda_version = "13.0"
+gpu_name = "NVIDIA GeForce RTX 5090"
+gpu_compute_capability = "12.0"
+gpu_driver_version = "580.159.03"
 mujoco_gl = "egl"
 
-# A generated hash-locked Python dependency file will supplement this file before
-# the first rollout. Filling PENDING values does not alter the scientific protocol.
+# Reproducibility fingerprints captured before the first model inference/reset.
+gpu_freeze_file = "environment-gpu.freeze"
+gpu_freeze_sha256 = "d738fb679db3682292481dfb74154b2d1d22da37630fd0156092c281ff31f821"
+policy_model_sha256 = "9a9f6413e42c0f332fccbce9a0dc796af2790f82cf002f791cdbf7e01e1afca8"
+torch_wheel_sha256 = "0f68f4ac6d95d12e896c3b7a912b5871619542ec54d3649cf48cc1edd4dd2756"
+torchvision_wheel_sha256 = "0f030a9bd8ada1a31b7111ea1589c1ecb5fa0884fee700a203e731b4cf378a98"
+lerobot_source_archive_sha256 = "c2086394e4b04cbd64b714119d4ae368f5ed28f0673ed75c64883ad4f710e5f9"
+small_snapshot_archive_sha256 = "08697195da3fe7747059ea268d45e252c094a3ba38a81689569f629735aee852"

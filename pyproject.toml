@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mech-int-vla"
+version = "0.1.0"
+description = "Executable protocol utilities for the preregistered SmolVLA study"
+requires-python = ">=3.11"
+dependencies = ["numpy>=2.0,<2.3", "PyYAML>=6.0,<7"]
+
+[project.scripts]
+mech-int-vla-runtime = "mech_int_vla.runtime_cli:main"
+
+[project.optional-dependencies]
+test = ["pytest>=8.0,<10"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+mech_int_vla = ["py.typed"]

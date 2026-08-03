@@ -308,4 +308,4 @@ left to environment resolution.
   data, every control distribution and exclusion is retained, supporting candidates
   are selected only by the already registered Calibration probe metric, and failure
   to qualify an alpha is declared inconclusive rather than relaxed.
-- **Implementing commit:** `PENDING_THIS_COMMIT`
+- **Implementing commit:** `23d0df6ac7420b1abd91ba52bb515924676988e3`

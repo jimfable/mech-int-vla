@@ -118,16 +118,19 @@ def probe_subspace_shift(
 ) -> Tensor:
     """Return ``alpha * P(h_d - h_r)`` for the probe row-space projector.
 
-    ``probe_rows`` has shape ``(probe_dim, hidden_dim)`` and activations may have
-    shape ``(hidden_dim,)`` or ``(batch, hidden_dim)``.  ``pinv`` makes the
-    operation well-defined even if probe rows are not orthogonal or are rank
-    deficient.
+    ``probe_rows`` has shape ``(2, hidden_dim)`` and numerical rank exactly two;
+    activations may have shape ``(hidden_dim,)`` or ``(batch, hidden_dim)``.
     """
 
     if probe_rows.ndim != 2:
         raise ValueError(
             f"probe_rows must be rank 2, got shape {tuple(probe_rows.shape)}"
         )
+    if (
+        probe_rows.shape[0] != 2
+        or int(torch.linalg.matrix_rank(probe_rows.to(dtype=torch.float32)).item()) != 2
+    ):
+        raise ValueError("probe_rows must define a numerical rank-two row space")
     if donor_activation.shape != recipient_activation.shape:
         raise ValueError(
             "donor_activation and recipient_activation must have identical shapes; "
@@ -162,6 +165,72 @@ def probe_subspace_shift(
     gram_pinv = torch.linalg.pinv(rows @ rows.mT)
     projected = (delta @ rows.mT) @ gram_pinv @ rows
     return projected * alpha
+
+
+def minimum_norm_circular_probe_shift(
+    probe_rows: Tensor,
+    activation: Tensor,
+    feature_center: Tensor,
+    target_center: Tensor,
+    *,
+    scaled_angle_radians: float,
+) -> Tensor:
+    """Rotate a raw circular-probe output with the minimum-norm hidden shift.
+
+    The fitted probe is ``z = (h - feature_center) @ W.T + target_center``.
+    This returns the minimum-L2 ``delta_h`` satisfying
+    ``W @ delta_h = rotate(z) - z``. The rotation preserves the current raw
+    resultant norm, as frozen for the +/-10 degree controllability feature.
+    """
+
+    if probe_rows.ndim != 2 or probe_rows.shape[0] != 2:
+        raise ValueError("probe_rows must have shape (2, hidden_dim)")
+    if activation.ndim not in (1, 2):
+        raise ValueError(
+            "activation must have shape (hidden_dim,) or (batch, hidden_dim)"
+        )
+    if feature_center.ndim != 1 or feature_center.shape[0] != probe_rows.shape[1]:
+        raise ValueError("feature_center must match the probe hidden dimension")
+    if target_center.shape != (2,):
+        raise ValueError("target_center must have shape (2,)")
+    if activation.shape[-1] != probe_rows.shape[1]:
+        raise ValueError("activation and probe hidden dimensions differ")
+    if not math.isfinite(scaled_angle_radians):
+        raise ValueError("scaled_angle_radians must be finite")
+
+    compute_dtype = (
+        torch.float64
+        if torch.float64
+        in (
+            probe_rows.dtype,
+            activation.dtype,
+            feature_center.dtype,
+            target_center.dtype,
+        )
+        else torch.float32
+    )
+    rows = probe_rows.to(device=activation.device, dtype=compute_dtype)
+    if int(torch.linalg.matrix_rank(rows).item()) != 2:
+        raise ValueError("probe_rows must define a numerical rank-two row space")
+    current = activation.to(dtype=compute_dtype)
+    center = feature_center.to(device=activation.device, dtype=compute_dtype)
+    intercept = target_center.to(device=activation.device, dtype=compute_dtype)
+    raw = (current - center) @ rows.mT + intercept
+    if torch.any(torch.linalg.vector_norm(raw, dim=-1) <= 1e-12).item():
+        raise ValueError("zero probe resultant has no circular intervention target")
+
+    angle = torch.tensor(
+        scaled_angle_radians, device=activation.device, dtype=compute_dtype
+    )
+    cosine = torch.cos(angle)
+    sine = torch.sin(angle)
+    rotation = torch.stack((torch.stack((cosine, -sine)), torch.stack((sine, cosine))))
+    target = raw @ rotation.mT
+    delta_output = target - raw
+    shift = (delta_output @ torch.linalg.pinv(rows @ rows.mT)) @ rows
+    if not torch.isfinite(shift).all().item():
+        raise InstrumentationError("minimum-norm probe shift is nonfinite")
+    return shift
 
 
 class SmolVLAInstrumentation:
@@ -694,5 +763,6 @@ __all__ = [
     "CallRecord",
     "InstrumentationError",
     "SmolVLAInstrumentation",
+    "minimum_norm_circular_probe_shift",
     "probe_subspace_shift",
 ]

@@ -398,3 +398,62 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Compute / cost:** laptop-only synthetic tests; Vast remained inactive at the
   previously verified `$0.037/hr` storage rate and the SSH endpoint never reached a
   server banner. Zero model forwards and zero simulator control steps.
+
+### 2026-08-03 12:24 CEST — SETUP-010: freeze replay scores, exact features, and failure events
+
+- **Stage:** setup
+- **Question:** Can every input to the registered M0/M1/M2 comparison and failure
+  lead-time analysis be computed deterministically from validated raw artifacts,
+  without leaving post-outcome numerical or annotation choices open?
+- **Pre-state / commit:** `c9c0447ce4077f01027e75ba1b6e6d1f01899868`;
+  no successful simulator reset, policy action, success label, probe fit, or causal
+  result had been observed.
+- **Method:** Split the work into independent replay-scoring, feature-mathematics,
+  and failure-event implementations, then audited their interfaces centrally.
+  Added exact non-advancing camera/object observations with simulator restoration,
+  a rank-two minimum-norm circular-probe intervention, and a deterministic replay
+  orchestrator with explicit common-noise tensors, queue/RNG nonmutation checks,
+  synchronized cost records, atomic content-linked sidecars, and a tamper-safe
+  loader. Encoded the full action scale and M0/M1/M2 reductions, out-of-fold
+  coverage geometry, circular statistics, probe-norm references, and nested feature
+  ordering. Operationalized missed grasp, drop, workspace-exit, and horizon events,
+  including exact artifact coverage and the noncircular Discovery bounds freeze.
+- **Inputs and controls:** Synthetic uint8 images, simulator snapshots, action
+  chunks, activations, poses, contacts, phases, terminal flags, and artifact hashes.
+  The scorer reuses the exact first four noise objects across all transforms and
+  interventions, restores every temporary edit byte-for-byte, refuses protected
+  config/lock destinations and overwrites, and publishes nothing after a replay,
+  RNG, queue, or schema mismatch. Coverage excludes the query episode and its full
+  base-init group before both fitting and neighbor search. Failure bounds validate
+  the complete expected artifact/hash set before reading validity or success.
+- **Results:** The scorer stores all raw primitives and explicit availability masks
+  in deterministic compressed NumPy archives. The feature layer implements 13 M0
+  columns, 27 raw M1 state columns plus three coverage columns, and the frozen VLM
+  or expert M2 increments. Relative yaw is derived from the declared relative
+  quaternion; numerically zero probe vectors use the prospectively fixed `1e-12`
+  floor; mixed intervention availability fails closed. Failure annotation records
+  event onset and confirmation, rejects incomplete early failures, excludes failed
+  wandering from reachable bounds, and requires every Discovery episode in the
+  video audit. The repository passes 207 synthetic tests plus Ruff lint/format,
+  byte-compilation, and whitespace checks.
+- **Interpretation:** The remaining scoring uncertainty is now concentrated in one
+  concrete pinned LeRobot/LIBERO adapter and the first real CUDA execution, rather
+  than in the scientific arithmetic. The strict missingness behavior may reduce
+  usable M2 features when a counterfactual is invalid, but it cannot silently favor
+  the white-box method.
+- **Confidence:** high for dependency-light reductions, provenance hashes,
+  precedence, thresholds, and failure behavior; medium for private pinned
+  `_get_action_chunk` and full-chunk postprocessor compatibility until exercised on
+  the exact GPU runtime.
+- **Decision:** Commit and push this pre-outcome contract before any GPU resume.
+  Keep all four intervention draws mandatory, audit all Discovery videos, and never
+  relax replay equality to recover a sidecar.
+- **Next step:** finish the pinned runtime adapter against LeRobot commit
+  `30da8e687a6dfc617fcd94afc367ac7071c376ce`, push it separately, then resume the
+  preserved Vast instance only for asset staging and the first manifested IID
+  Reality-Gate reset/action.
+- **Artifacts:** `src/mech_int_vla/{scoring,features,failure_events,instrumentation,libero_runtime}.py`,
+  their regression tests, `AMENDMENTS.md`, and this log entry.
+- **Compute / cost:** laptop-only synthetic tests. Vast remained stopped at the
+  verified `$0.037/hr` retained-disk rate versus `$0.344/hr` running (about 9.3x
+  lower); zero new model forwards and zero simulator control steps.

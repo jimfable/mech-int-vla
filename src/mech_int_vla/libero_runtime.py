@@ -99,6 +99,14 @@ class SimulatorSnapshot:
     camera_quaternions: np.ndarray
 
 
+@dataclass(frozen=True)
+class CounterfactualObservation:
+    available: bool
+    reasons: tuple[str, ...]
+    raw_observation: Mapping[str, Any] | None
+    observation: Mapping[str, Any] | None
+
+
 def seed_runtime(seed: int) -> None:
     """Seed Python, NumPy, and PyTorch (when installed) deterministically."""
 
@@ -682,6 +690,75 @@ def check_validity(
     )
 
 
+def counterfactual_validity_reasons(
+    wrapper: Any,
+    object_name: str,
+    config: ValidityConfig,
+    *,
+    check_object_edit: bool = True,
+) -> tuple[str, ...]:
+    """Check the frozen non-advancing counterfactual availability constraints."""
+
+    sim = _sim(wrapper)
+    state = np.asarray(_offscreen(wrapper).get_sim_state(), dtype=np.float64)
+    object_position, object_quaternion = primary_object_pose(wrapper, object_name)
+    camera_positions = np.asarray(sim.model.cam_pos, dtype=np.float64)
+    camera_quaternions = np.asarray(sim.model.cam_quat, dtype=np.float64)
+    contact_distances = np.asarray(
+        [float(contact.dist) for contact in sim.data.contact[: int(sim.data.ncon)]],
+        dtype=np.float64,
+    )
+    finite = bool(
+        np.isfinite(state).all()
+        and np.isfinite(object_position).all()
+        and np.isfinite(object_quaternion).all()
+        and np.isfinite(camera_positions).all()
+        and np.isfinite(camera_quaternions).all()
+        and np.isfinite(contact_distances).all()
+    )
+    bounds = workspace_bounds(wrapper)
+    in_workspace = bool(
+        bounds.x_min <= object_position[0] <= bounds.x_max
+        and bounds.y_min <= object_position[1] <= bounds.y_max
+        and bounds.table_surface_z - config.min_height_below_table_m
+        <= object_position[2]
+        <= bounds.table_surface_z + config.max_height_above_table_m
+    )
+    reasons: list[str] = []
+    if not finite:
+        reasons.append("nonfinite_counterfactual_state")
+    if check_object_edit:
+        if (
+            deepest_primary_penetration(wrapper, object_name)
+            > config.max_penetration_depth_m
+        ):
+            reasons.append("counterfactual_primary_object_penetration")
+        if not in_workspace:
+            reasons.append("counterfactual_primary_object_outside_workspace")
+    return tuple(reasons)
+
+
+def brightness_transform_raw_observation(
+    raw_observation: Mapping[str, Any], multiplier: float
+) -> dict[str, Any]:
+    """Apply the frozen uint8 brightness transform to both policy cameras."""
+
+    value = float(multiplier)
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError("brightness multiplier must be finite and positive")
+    transformed = _copy_observation(raw_observation)
+    for key in CAMERA_NAME_MAPPING:
+        if key not in transformed:
+            raise LiberoRuntimeError(f"raw observation is missing camera {key!r}")
+        image = np.asarray(transformed[key])
+        if image.dtype != np.uint8 or image.ndim != 3 or image.shape[-1] != 3:
+            raise LiberoRuntimeError(f"camera {key!r} must be an HxWx3 uint8 array")
+        transformed[key] = np.rint(
+            np.clip(image.astype(np.float32) * value, 0.0, 255.0)
+        ).astype(np.uint8)
+    return transformed
+
+
 def _copy_observation(value: Any) -> Any:
     if isinstance(value, np.ndarray):
         return value.copy()
@@ -743,6 +820,68 @@ class RawLiberoEpisode:
 
     def _format_observation(self, raw: Mapping[str, Any]) -> Mapping[str, Any]:
         return self.wrapper._format_raw_obs(raw)
+
+    def format_observation(self, raw: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Public defensive formatter used by deterministic replay scoring."""
+
+        return _copy_observation(self._format_observation(_copy_observation(raw)))
+
+    def current_raw_trace(self) -> RawTraceFrame:
+        """Capture the current non-advancing raw observation and trace state.
+
+        Replay scoring uses this after a temporary simulator edit.  The returned
+        frame owns defensive copies, so callers cannot mutate the live simulator
+        or wrapper observation buffers.
+        """
+
+        if self.primary_object_name is None or not self._has_reset:
+            raise LiberoRuntimeError("episode has not been reset")
+        return self._trace_frame(_copy_observation(self._raw_observation()))
+
+    def photometric_observation(
+        self, raw: Mapping[str, Any], *, multiplier: float
+    ) -> Mapping[str, Any]:
+        """Return a formatted two-camera brightness counterfactual."""
+
+        return self.format_observation(
+            brightness_transform_raw_observation(raw, multiplier)
+        )
+
+    @contextlib.contextmanager
+    def counterfactual_observation(
+        self, condition: ConditionSpec
+    ) -> Iterator[CounterfactualObservation]:
+        """Yield one non-advancing camera/object observation and restore exactly."""
+
+        if self.primary_object_name is None or not self._has_reset:
+            raise LiberoRuntimeError("episode has not been reset")
+        if self.terminal:
+            raise LiberoRuntimeError("cannot score a terminal simulator state")
+        if condition.family not in {"camera_render", "object_pose"}:
+            raise LiberoRuntimeError(
+                "counterfactual observation requires camera_render or object_pose"
+            )
+        with temporary_condition(
+            self.wrapper,
+            condition,
+            primary_object_name=self.primary_object_name,
+        ):
+            reasons = counterfactual_validity_reasons(
+                self.wrapper,
+                self.primary_object_name,
+                self.validity_config,
+                check_object_edit=condition.family == "object_pose",
+            )
+            if reasons:
+                yield CounterfactualObservation(False, reasons, None, None)
+            else:
+                raw = _copy_observation(self._raw_observation())
+                yield CounterfactualObservation(
+                    True,
+                    (),
+                    raw,
+                    self.format_observation(raw),
+                )
 
     def _trace_frame(self, raw: Mapping[str, Any]) -> RawTraceFrame:
         if self.primary_object_name is None or self.post_settle_start_position is None:

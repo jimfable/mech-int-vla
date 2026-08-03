@@ -15,6 +15,7 @@ from mech_int_vla.libero_runtime import (
     LiberoRuntimeError,
     RawLiberoEpisode,
     apply_camera_transform,
+    brightness_transform_raw_observation,
     build_raw_libero_env,
     capture_simulator_snapshot,
     check_validity,
@@ -282,6 +283,66 @@ def test_object_and_camera_transforms_restore_exactly() -> None:
     assert np.array_equal(
         wrapper.backend.sim.model.cam_quat, original.camera_quaternions
     )
+
+
+def test_brightness_transform_uses_both_uint8_cameras_and_rounds() -> None:
+    raw = FakeBackend()._get_observations()
+    raw["agentview_image"][:] = np.asarray([[[1, 2, 255]]], dtype=np.uint8)
+    raw["robot0_eye_in_hand_image"][:] = np.asarray([[[100, 101, 200]]], dtype=np.uint8)
+    transformed = brightness_transform_raw_observation(raw, 1.15)
+    assert transformed["agentview_image"][0, 0].tolist() == [1, 2, 255]
+    assert transformed["robot0_eye_in_hand_image"][0, 0].tolist() == [115, 116, 230]
+    assert raw["robot0_eye_in_hand_image"][0, 0].tolist() == [100, 101, 200]
+
+
+def test_runtime_counterfactual_observation_restores_and_marks_invalid() -> None:
+    protocol = load_protocol_config(ROOT / "configs")
+    wrapper = FakeWrapper()
+    runtime = RawLiberoEpisode(
+        wrapper,
+        protocol.task_order.tasks[0],
+        protocol.split.policy_execution,
+        protocol.perturbations.validity,
+    )
+    reset = runtime.reset(seed=101000, condition=ConditionSpec("iid", "iid"))
+    current = runtime.current_raw_trace()
+    assert current.control_step == 0
+    assert np.array_equal(current.policy_state, reset.frame.policy_state)
+    current.raw_observation["agentview_image"][0, 0, 0] = 99
+    assert runtime.current_raw_trace().raw_observation["agentview_image"][0, 0, 0] != 99
+    original = capture_simulator_snapshot(wrapper)
+    yaw = ConditionSpec("yaw", "object_pose", parameters={"yaw": 15})
+    with runtime.counterfactual_observation(yaw) as counterfactual:
+        assert counterfactual.available
+        assert counterfactual.observation is not None
+        edited = runtime.current_raw_trace()
+        assert not np.array_equal(
+            edited.primary_object_quaternion_wxyz,
+            reset.frame.primary_object_quaternion_wxyz,
+        )
+        assert not np.array_equal(
+            capture_simulator_snapshot(wrapper).state,
+            original.state,
+        )
+    restored = capture_simulator_snapshot(wrapper)
+    assert np.array_equal(restored.state, original.state)
+    assert np.array_equal(restored.camera_positions, original.camera_positions)
+    assert reset.frame.control_step == 0
+
+    wrapper.backend.sim.data.contact = [FakeContact(0, 1, -0.006)]
+    wrapper.backend.sim.data.ncon = 1
+    with runtime.counterfactual_observation(yaw) as counterfactual:
+        assert not counterfactual.available
+        assert counterfactual.observation is None
+        assert counterfactual.reasons == ("counterfactual_primary_object_penetration",)
+
+    camera = ConditionSpec(
+        "camera",
+        "camera_render",
+        parameters={"yaw": 3, "lateral_m": 0.0},
+    )
+    with runtime.counterfactual_observation(camera) as counterfactual:
+        assert counterfactual.available
 
 
 def test_amended_validity_thresholds_are_operational() -> None:

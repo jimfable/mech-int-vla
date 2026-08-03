@@ -24,8 +24,12 @@ at the frozen five-step cadence, and performs the one required fresh-runtime ret
 after an invalid reset without running the policy. Safe artifact ingestion,
 circular-probe selection, shared M0/M1/M2 predictor fitting, causal matching and
 patch evaluation, and confirmatory statistical evaluation are implemented and
-tested against synthetic data. The lock guards verify the checkpoint and frozen
-analysis artifacts by content and require exact Locked Test coverage. The first
+tested against synthetic data. Deterministic factual replay, the six frozen
+counterfactual score transforms, per-draw probe interventions, exact numerical
+M0/M1/M2 reductions, leakage-safe coverage features, and task-specific failure
+event annotation are also executable and content-addressed. The lock guards verify
+the checkpoint and frozen analysis artifacts by content and require exact Locked
+Test coverage. The first
 simulator construction exposed a separately distributed LIBERO asset dependency
 before an initial state was loaded; its exact snapshot is pinned and
 content-verified. No successful simulator reset, policy action, success label,

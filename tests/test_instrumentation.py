@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import pathlib
 import subprocess
@@ -21,6 +22,7 @@ from mech_int_vla.instrumentation import (
     CallPhase,
     InstrumentationError,
     SmolVLAInstrumentation,
+    minimum_norm_circular_probe_shift,
     probe_subspace_shift,
 )
 
@@ -402,7 +404,7 @@ class InstrumentationTests(unittest.TestCase):
             grad_model.sample_actions(batch_size=1)
 
     def test_probe_projection_computes_in_stable_precision(self) -> None:
-        rows = torch.tensor([[1.0, 1.0, 0.0], [2.0, 2.0, 0.0]], dtype=torch.float16)
+        rows = torch.tensor([[1.0, 1.0, 0.0], [1.0, -1.0, 0.0]], dtype=torch.float16)
         donor = torch.tensor([3.0, 1.0, 10.0], dtype=torch.float16)
         recipient = torch.zeros(3, dtype=torch.float16)
 
@@ -410,13 +412,48 @@ class InstrumentationTests(unittest.TestCase):
 
         self.assertEqual(shift.dtype, torch.float32)
         torch.testing.assert_close(
-            shift, torch.tensor([0.5, 0.5, 0.0]), rtol=1e-5, atol=1e-5
+            shift, torch.tensor([0.75, 0.25, 0.0]), rtol=1e-5, atol=1e-5
         )
 
         shift64 = probe_subspace_shift(
             rows.double(), donor.double(), recipient.double(), alpha=0.25
         )
         self.assertEqual(shift64.dtype, torch.float64)
+
+    def test_probe_projection_rejects_rank_deficient_rows(self) -> None:
+        rows = torch.tensor([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
+        with self.assertRaisesRegex(ValueError, "rank-two"):
+            probe_subspace_shift(rows, torch.ones(3), torch.zeros(3))
+
+    def test_minimum_norm_circular_probe_shift_hits_rotated_raw_target(self) -> None:
+        rows = torch.tensor([[2.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        activation = torch.tensor([1.5, 2.5, 7.0])
+        feature_center = torch.tensor([0.5, 0.5, 0.0])
+        target_center = torch.tensor([0.0, 0.0])
+
+        shift = minimum_norm_circular_probe_shift(
+            rows,
+            activation,
+            feature_center,
+            target_center,
+            scaled_angle_radians=math.pi / 2,
+        )
+        raw = (activation - feature_center) @ rows.mT + target_center
+        moved = (activation + shift - feature_center) @ rows.mT + target_center
+        expected = torch.tensor([-raw[1], raw[0]])
+        torch.testing.assert_close(moved, expected)
+        self.assertEqual(float(shift[2]), 0.0)
+
+    def test_minimum_norm_circular_probe_shift_rejects_zero_resultant(self) -> None:
+        rows = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+        with self.assertRaisesRegex(ValueError, "zero probe resultant"):
+            minimum_norm_circular_probe_shift(
+                rows,
+                torch.zeros(2),
+                torch.zeros(2),
+                torch.zeros(2),
+                scaled_angle_radians=0.1,
+            )
 
 
 if __name__ == "__main__":

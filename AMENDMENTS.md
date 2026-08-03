@@ -168,9 +168,10 @@ left to environment resolution.
   states unchanged. A mismatch publishes no sidecar. Both cameras receive
   brightness in uint8 space as `rint(clip(float32_pixel * multiplier, 0, 255))`;
   camera/object edits use the already frozen simulator transforms without advancing
-  time. A transformed state failing the frozen finite/penetration/workspace checks
-  is marked unavailable, stored as NaN with an explicit mask, and never invalidates
-  the factual rollout.
+  time. A camera-only edit is unavailable only if it creates nonfinite simulator or
+  camera values. An object-pose edit additionally must pass the frozen
+  penetration/workspace checks. An unavailable transform is stored as NaN with an
+  explicit mask and never invalidates the factual rollout.
 
   Noise seed `j` is `hash_seed("score-noise-v1", episode_id, control_step, j)`.
   The eight original chunks use `j=0..7`; the first four exact noise tensors are
@@ -203,7 +204,9 @@ left to environment resolution.
   mean two-finger opening; primary contact and backend-grasp flags; normalized
   step; goal-present; and four phase indicators. Missing goal values are NaN plus
   `goal_present=0`. These columns, not the writer's reduced scalar array, define
-  the raw M1 pose block. Coverage uses all valid Calibration states at the
+  the raw M1 pose block. Each symmetry-aware yaw pair uses the yaw of its adjacent
+  relative quaternion, not subtraction of separately extracted world Euler yaws.
+  Coverage uses all valid Calibration states at the
   five-step cadence. Its continuous vector is the translations, symmetry pairs,
   opening, normalized step, contact/grasp, goal-present, and phase indicators,
   standardized by episode-equal Calibration mean/population SD with the same
@@ -213,7 +216,10 @@ left to environment resolution.
   episode ID, then step. Feature one is the median distance to five successful
   same-phase states; feature two the nearest state across all phases; feature three
   the failure fraction among 25 nearest states across all phases. Insufficient
-  neighbors yield NaN and the existing predictor missingness indicator.
+  neighbors yield NaN and the existing predictor missingness indicator. A reference
+  row with any nonfinite coverage coordinate is ineligible; a nonfinite query vector
+  receives NaN for all three coverage outputs rather than partial-coordinate
+  distance or implicit imputation.
 
   For M2, probe angles live in the scaled circle `phi=s*theta`. Object yaw `delta`
   expects `phi' = phi - s*delta`; its feature is mean symmetry-aware physical-angle
@@ -222,10 +228,15 @@ left to environment resolution.
   averaged over four draws. Raw resultant norm is averaged over eight originals.
   Its distribution feature is the absolute robust z-distance from successful,
   same-phase Calibration state means, using median and `max(1.4826*MAD,1e-8)` with
-  the same out-of-fold group exclusions; insufficient references yield NaN. Expert
-  selections add eight-draw circular dispersion; VLM context omits that column
-  because its prefix representation is architecturally upstream of flow noise.
-  A zero probe vector yields NaN circular/intervention features.
+  the same out-of-fold group exclusions; fewer than five eligible references yield
+  NaN. Expert selections add eight-draw circular dispersion; VLM context omits that
+  column because its prefix representation is architecturally upstream of flow
+  noise. A probe vector with raw L2 norm at most `1e-12` is numerically zero.
+  Intervention availability is stored separately for each of the four common-noise
+  draws. A numerically zero probe vector makes that draw unavailable; both
+  aggregate intervention features are NaN unless all four draws are available,
+  and a selective subset is never averaged. A numerically zero probe vector also
+  yields NaN for any circular feature whose defined reduction contains that vector.
 
   The `+/-10` degree intervention preserves the current raw probe-vector norm and
   targets its rotated vector. Its minimum-norm activation shift is
@@ -240,7 +251,10 @@ left to environment resolution.
   Every component synchronizes CUDA immediately outside its measured interval,
   records CUDA-event and `perf_counter_ns` wall time, forward/intervention counts,
   absolute and incremental peak allocated bytes after a per-state peak reset, and
-  logical plus compressed activation bytes. No unreported warmup calls are made.
+  logical plus compressed activation bytes. Compressed activation bytes are the
+  byte length after zlib level-9 compression of deterministic NumPy `.npy` bytes
+  (`allow_pickle=False`) for the contiguous float32 selected activation. No
+  unreported warmup calls are made.
   Shared original/transformed forwards are charged to M0, M1, and M2; intervention
   calls/activation bytes are additional M2 cost. Attempted and valid Calibration
   episode counts are both reported. For resource `R`, amortized per-deployment cost
@@ -309,3 +323,67 @@ left to environment resolution.
   are selected only by the already registered Calibration probe metric, and failure
   to qualify an alpha is declared inconclusive rather than relaxed.
 - **Implementing commit:** `23d0df6ac7420b1abd91ba52bb515924676988e3`
+
+### 2026-08-03 — Freeze deterministic failure-event annotation
+
+- **Prior protocol commit:** `c9c0447ce4077f01027e75ba1b6e6d1f01899868`
+- **Technical reason:** Section 5 fixes the semantic event order but does not define
+  gripper-close polarity, the distance trend, landing/support detection, recovery
+  from a workspace exit, event onset versus confirmation, or precedence. The raw
+  trace has object-center height and gripper/object contact but not object-bottom
+  height or a support-surface contact identity, so the literal drop clause requires
+  a declared trace-level proxy before Discovery videos are inspected.
+- **Exact change:** Annotate only valid failed episodes; successful episodes receive
+  no failure event and invalid resets are excluded. Postprocessed LIBERO gripper
+  action index 6 is `-1=open`, `+1=close`; zero is neither. A missed grasp candidate
+  begins at the episode's first action with value greater than zero. It is confirmed
+  only when frames `c+1..c+10` all lack primary/gripper contact, the ordinary
+  least-squares slope of 3-D EEF/object distance over those ten equally spaced
+  frames is strictly positive, and the final distance exceeds the first by at least
+  5 mm. Its onset is `c+1` and confirmation is `c+10`; an incomplete ten-frame
+  window cannot qualify.
+
+  A drop candidate begins at frame `r` when primary/gripper contact changes true to
+  false and the backend grasp predicate was true at `r-1`. Search forward for the
+  first three-frame window `u..u+2` for which there is no gripper recontact anywhere
+  from `r` through `u+2`, object center Z is at most the post-settle frame-0 center Z
+  plus 5 mm on all three landing frames, and phase is not `placed` on all three.
+  Recontact rejects that loss, but a later qualifying contact loss may be used. This
+  stable initial-height proxy is called `initial-support-height proxy`, never
+  literal support-surface contact. Drop onset is `r` and confirmation is `u+2`; no
+  qualifying landing means no drop annotation.
+
+  At the Reality Gate freeze, derive reachable object-center bounds separately for
+  X/Y/Z as the float64 minima/maxima over frame 0 from every valid selected-task
+  Discovery reproduction/assigned-yaw rollout plus frames 1 through terminal from
+  every valid successful one, then expand each side by exactly 5 cm. Thus all valid
+  initial states define the start envelope while failed excursions do not define
+  reachability. An irrecoverable exit is the first frame of the final contiguous
+  suffix in which the object center remains outside at least one expanded axis
+  through the terminal frame, including onset 0 when an episode begins and remains
+  outside; confirmation is terminal. Bounds, included and excluded episode hashes,
+  and their success/validity reasons cannot be changed after `prereg-locked-v1`.
+
+  For a failed episode choose the qualifying event with earliest onset; exact ties
+  follow the registered textual order `missed_grasp`, `dropped_object`,
+  `irrecoverable_workspace_exit`. Store both onset and confirmation. If none
+  qualifies, require exactly 520 actions and assign `terminal_horizon` at step 520;
+  a shorter failed episode without a qualifying event fails closed instead of
+  inventing a horizon. The Reality Gate JSON must store and hash task identity,
+  the exact primary-placement predicate key(s), exact Discovery episode IDs and both
+  raw-artifact hashes, raw and expanded bounds, every threshold/proxy, implementation
+  commit, and all Discovery annotations used in the preregistered video audit. The
+  audit includes every expected selected-task Discovery episode, so video inclusion
+  cannot be chosen from the observed event or outcome.
+- **Affected hypotheses/metrics:** Failure-event subtype, alarm lead time, detection
+  rate, and conditional lead-time summaries. Terminal success labels, primary
+  paired log loss, task gates, and prediction features are unchanged.
+- **Outcome visibility:** No valid simulator reset, action, success/failure label,
+  video, trace, or Discovery/Calibration/Locked Test event had been observed. The
+  action polarity came from pinned robosuite source; sufficiency and proxy choices
+  came from static schema inspection only.
+- **Bias risk and mitigation:** Low outcome-selection risk. The proxy is explicitly
+  named and distinguishable from physical support contact; all thresholds,
+  precedence, onset/confirmation rules, bounds cohort, and early-termination failure
+  behavior are fixed before data and retained in a content-addressed freeze.
+- **Implementing commit:** `PENDING_FUTURE_COMMIT`

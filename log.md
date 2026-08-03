@@ -1112,3 +1112,19 @@ that experiments, negative results, decisions, and confidence can be audited.
   exact manifest order. Recheck counts/receipts after meaningful progress; stop
   the instance only after all concrete GPU work and any backup transfer are
   complete, never by deletion/termination/recycle.
+
+### 2026-08-03 21:44 CEST — CALIBRATION-RUNNING-002: first two cells recorded
+
+- **Progress:** Cell 0 remains the single resumed artifact. Cell 1 completed in
+  exact manifest order with 520 control steps, `valid_reset=true`, and the
+  expected terminal-horizon truncation (`success=false`). Its immutable hashes
+  are metadata `846deb438f6ed87ad42d6fbff5c6308822deb17e5a8a98dda85a9271b43bcee5`
+  and trajectory
+  `f209a330b2c7531d593e065998c226d4a0af878731a1336fa37dec9914be2628`.
+- **Current state:** The Supervisor has started cell 2 (`init10-cell2`) as the
+  only rollout child; the remote Calibration tree contains exactly two episode
+  directories and no completion receipt. GPU telemetry is healthy and the
+  parent remains `RUNNING`.
+- **Decision:** Continue the existing Supervisor job without intervention;
+  this is ordinary protocol execution, not a new rollout path. Preserve the
+  immutable tag and do not inspect or instantiate Locked Test.

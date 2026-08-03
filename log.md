@@ -592,3 +592,77 @@ that experiments, negative results, decisions, and confidence can be audited.
   stopped, deleted, or otherwise mutated in this run; no new authenticated price was
   available. The last live-verified Vast prices remain `$0.037/hr` stopped storage
   and `$0.344/hr` running (about 9.3x lower while stopped).
+
+### 2026-08-03 15:42 CEST — SETUP-013: establish Linux/EGL/CUDA and publish the first Discovery episode
+
+- **Stage:** setup / Discovery Reality Gate
+- **Question:** Does the exact committed SmolVLA/LIBERO stack execute the first
+  manifested rank-1 IID cell on the retained RTX 5090 under Linux/EGL, including
+  the frozen activation hooks and atomic raw-artifact writer?
+- **Pre-state / commit:** `b491dc76641efe3a5c5d7eef6bb87af13d85f10b`;
+  the GPU disk, checkpoint cache, Python environment, and exact source snapshots
+  were retained, but no Linux/EGL reset, CUDA policy action, or registered rollout
+  artifact had succeeded. The local worktree contained later uncommitted audit
+  hardening and was deliberately not synchronized to the execution checkout.
+- **Method:** Reauthenticated to Vast instance `46677323` through the provider proxy,
+  verified the 200 GB disk and idle RTX 5090 read-only, transferred a task-specific
+  LIBERO asset archive in individually hashed chunks, and reassembled it only after
+  its SHA-256 matched
+  `4fa1545f4022341fd76f8f88ce8c9380f4b3f69d9183ed315df8861cd1559195`.
+  Preserved but renamed 83 AppleDouble metadata files out of Linux runtime globs.
+  Two indirect arena-style dependencies omitted by the initial XML closure were
+  recovered from the fully verified `lerobot/libero-assets` snapshot:
+  `light-gray-floor-tile.png` (`a2aae4ba...acbc5`) and
+  `light-gray-plaster.png` (`d0bdaf13...fe191`). Ran the exact reset, then a
+  standalone one-action diagnostic that never invoked an artifact writer, and only
+  after both passed launched the preregistered cell through Supervisor. Loaded the
+  published directory with the committed fail-closed artifact loader and compared
+  its full episode provenance to the regenerated manifest entry.
+- **Inputs and controls:** policy revision
+  `31d453f7edd78c839a8bbc39744a292686daf0de`; base VLM revision
+  `7b375e1b73b11138ff12fe22c8f2822d8fe03467`; exact 487-file LeRobot source hash
+  `79603648ff8d9889072449099da6e60b6a92fe0da84108e2bae1dc765b217ecd`;
+  rank-1 task 5, init 0, IID, reset seed 101000; Linux, `MUJOCO_GL=egl`, CUDA 13.0,
+  NVIDIA GeForce RTX 5090 compute capability 12.0. Hub access was forced offline,
+  the execution worktree was clean, and the diagnostic advanced exactly one action
+  without writing a research artifact.
+- **Results:** The exact reset settled for ten no-op steps, produced an 8-value
+  policy state, and passed all validity checks with no initial success. The CUDA
+  diagnostic emitted a finite 7-D action (SHA-256 `16b962c8...aea7caf`), made the
+  required one prefix plus ten denoising calls, and captured all five finite frozen
+  candidates at widths 720 or 960; peak allocated GPU memory was 1.271 GB. It then
+  closed the simulator and removed instrumentation with no artifact. The registered
+  episode `libero_10-task5-discovery-init00-cell0` succeeded after 164 control
+  steps and terminated without truncation. Independent loading validated actions
+  `(164, 7)`, both lossless camera arrays `(165, 360, 360, 3)`, the complete array
+  schema, exact manifest metadata, no staging residue, metadata SHA-256
+  `ff2f145576518a68f6efaad48d6b5a9e159859b74bf3e6ad2de26b31de6598d3`,
+  and trajectory SHA-256
+  `9e97ae27d8ec2902d07acc21a476bb28834cb58c66684ddccb5f53cd329a6a7a`
+  over 42,463,750 bytes.
+- **Interpretation:** This is the first positive end-to-end evidence for the exact
+  GPU runtime, activation instrumentation, closed-loop policy, simulator, terminal
+  handling, and atomic artifact schema. It is only one of ten IID reproduction
+  cells and therefore cannot establish the six-of-ten reproduction gate, dynamic
+  failure range, predictive advantage, internal geometry, or causality.
+- **Confidence:** high for the recorded cell because the runtime and inputs were
+  content-pinned, the smoke was separated from the writer, Supervisor reported
+  expected exit status zero, and the destination was independently loaded and
+  hashed; low for rank-1 gate passage until the remaining IID cells finish.
+- **Decision:** Preserve the successful artifact immutably and run only the nine
+  remaining rank-1 IID cells under a single external lock. Keep all 30 yaw cells
+  closed until ten validated IID artifacts contain at least six successes.
+- **Next step:** finish and independently validate the exact ten-IID set, evaluate
+  the preregistered reproduction gate, and only on passage execute the 30 assigned
+  yaw cells. Build an external per-file inventory and checksum-verified laptop
+  backup before any instance stop.
+- **Artifacts:** GPU
+  `/workspace/research-artifacts/raw/discovery/libero_10-task5-discovery-init00-cell0/{metadata.json,trajectory.npz}`;
+  GPU logs under `/workspace/run-logs`; retained exact asset archive
+  `/workspace/libero-task5-assets.tar.zst.complete`; this log entry.
+- **Compute / cost:** one exact reset, one excluded CUDA action, and one registered
+  164-step rollout on the RTX 5090. Authenticated Vast pricing was reverified at
+  `$0.344/hr` running versus `$0.037/hr` retained storage (about 9.3x lower stopped).
+  The user added `$20` credit during execution. The instance was not stopped because
+  the remaining IID batch began immediately, and it was never deleted, destroyed,
+  recycled, or terminated.

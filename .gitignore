@@ -20,3 +20,4 @@ artifacts/cache/
 *.parquet
 *.safetensors
 wandb/
+.env.local

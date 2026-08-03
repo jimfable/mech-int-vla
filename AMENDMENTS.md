@@ -96,7 +96,7 @@ left to environment resolution.
 - **Bias risk and mitigation:** Negligible. Values are forced by immutable BDDL
   declarations, tested against their real key pattern, and no semantic choice or
   outcome was available.
-- **Implementing commit:** `PENDING_THIS_COMMIT`
+- **Implementing commit:** `a7e53048d82cab1284954efccd9b265d28dda7f8`
 
 ### 2026-08-03 — Correct stale checkpoint state-shape metadata
 

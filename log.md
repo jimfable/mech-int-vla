@@ -965,3 +965,34 @@ that experiments, negative results, decisions, and confidence can be audited.
   implementation commit is pushed will I materialize the freeze with that
   commit, make a lock-only commit, run the clean tagged guard, and decide whether
   any authorized Calibration runtime exists. Keep Vast instance 46677323 stopped.
+
+### 2026-08-03 18:48 CEST — LOCK-MATERIALIZE-001: derive the immutable lock candidate
+
+- **Stage:** Discovery-only lock materialization; no Calibration or Locked Test access
+- **Inputs:** Re-loaded exactly the 40 backed-up rank-1 Discovery directories at
+  immutable execution commit `b491dc76641efe3a5c5d7eef6bb87af13d85f10b` under
+  the pinned `ProtocolConfig`. The generated freeze records implementation
+  hardening commit `b41867e01ba50e6eec7fd869b4b18c0b8ea46a01`; no remote file or
+  Vast instance state was changed.
+- **Candidate artifact:** Wrote the canonical 129,099-byte
+  `locks/reality_gate_frozen.json` candidate. The complete strict payload passed
+  the typed guard validator at implementation HEAD before the lock-only commit.
+  Payload SHA-256 is
+  `64524c974e62c2ff500c385f049ce0589ca83c220caabc396358a9053051893c`;
+  Reality-Gate receipt SHA-256 is
+  `fd82aae6dd90462820a90448d3d75b649578f58ce898e94b31f4a23bfb6e2566`;
+  orientation eligibility SHA-256 is
+  `3599dab95b5bbc7ee4b3e6ea1872aa21d7aced6dd3ea61d7287cb6aee863a9fb`;
+  nested lock receipt SHA-256 is
+  `17f033b935ea3f600373b5953cdc5bad5c0fd9dfd3dc1260d022acf3355f36f4`;
+  failure-event freeze SHA-256 is
+  `dd42e46b055163ca7b8ca777e0bc1a04b9907eab265f87f7234e502a19839328`.
+- **Evidence summary:** Orientation remains 11,822/11,822 finite states with
+  SD `28.828397073481487` degrees. All 40 selected-task artifacts are retained;
+  the failure freeze retains all 40 annotations and the fixed audit membership.
+- **Decision:** Keep the candidate untagged until it is committed as the only
+  lock evidence on top of the pushed implementation checkpoint. After that
+  lock-only commit, require a clean worktree and `prereg-locked-v1` exactly at
+  `HEAD`, run the public Calibration guard, and do not inspect or launch any
+  protected split unless an authorized Calibration runtime is present. Keep
+  Vast instance 46677323 stopped.

@@ -425,5 +425,4 @@ left to environment resolution.
   fail-closed typed rehydration, a clean lock commit, and no protected-split
   access until the new guard passes. The original Discovery code commit remains
   separately recorded as `b491dc76641efe3a5c5d7eef6bb87af13d85f10b`.
-- **Implementing commit:** pending hardening checkpoint (recorded before the
-  immutable `prereg-locked-v1` lock commit)
+- **Implementing commit:** `b41867e01ba50e6eec7fd869b4b18c0b8ea46a01`

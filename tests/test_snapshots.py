@@ -70,11 +70,14 @@ def test_policy_and_tokenizer_are_both_overridden_to_local_snapshot(
     captured = {}
 
     class FakeConfig:
+        pass
+
+    class FakePreTrainedConfig:
         @classmethod
         def from_pretrained(cls, path, local_files_only):
             captured["config_path"] = path
             captured["config_offline"] = local_files_only
-            config = cls()
+            config = FakeConfig()
             config.input_features = {
                 "observation.state": types.SimpleNamespace(shape=(6,))
             }
@@ -129,6 +132,8 @@ def test_policy_and_tokenizer_are_both_overridden_to_local_snapshot(
 
     factory = types.ModuleType("lerobot.policies.factory")
     factory.make_pre_post_processors = make_pre_post_processors
+    policies_config = types.ModuleType("lerobot.configs.policies")
+    policies_config.PreTrainedConfig = FakePreTrainedConfig
     configuration = types.ModuleType("lerobot.policies.smolvla.configuration_smolvla")
     configuration.SmolVLAConfig = FakeConfig
     modeling = types.ModuleType("lerobot.policies.smolvla.modeling_smolvla")
@@ -141,8 +146,14 @@ def test_policy_and_tokenizer_are_both_overridden_to_local_snapshot(
     env_utils.preprocess_observation = lambda observation: {
         "observation.state": np.zeros((1, 8), dtype=np.float32)
     }
-    for name in ("lerobot", "lerobot.policies", "lerobot.policies.smolvla"):
+    for name in (
+        "lerobot",
+        "lerobot.configs",
+        "lerobot.policies",
+        "lerobot.policies.smolvla",
+    ):
         monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
+    monkeypatch.setitem(sys.modules, "lerobot.configs.policies", policies_config)
     monkeypatch.setitem(sys.modules, "lerobot.policies.factory", factory)
     monkeypatch.setitem(
         sys.modules, "lerobot.policies.smolvla.configuration_smolvla", configuration

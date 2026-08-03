@@ -220,6 +220,7 @@ def load_locked_smolvla(
     """
 
     try:
+        from lerobot.configs.policies import PreTrainedConfig
         from lerobot.policies.factory import make_pre_post_processors
         from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
         from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
@@ -228,10 +229,17 @@ def load_locked_smolvla(
         raise SnapshotError("LeRobot with the smolvla extra is required") from exc
 
     lock = snapshots.lock
-    config = SmolVLAConfig.from_pretrained(
+    # Dispatch through the registered base class.  Calling the concrete v0.6.0
+    # subclass directly asks draccus to decode the checkpoint's required `type`
+    # discriminator as a SmolVLA field and fails before it can remove that key.
+    config = PreTrainedConfig.from_pretrained(
         snapshots.policy,
         local_files_only=True,
     )
+    if not isinstance(config, SmolVLAConfig):
+        raise SnapshotError(
+            f"policy config resolved to {type(config).__name__}, expected SmolVLAConfig"
+        )
     config.vlm_model_name = str(snapshots.base_vlm)
     # The policy safetensor contains the full VLM state.  Construct architecture
     # from the pinned base config, then load only the complete policy checkpoint.

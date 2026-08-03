@@ -141,3 +141,35 @@ that experiments, negative results, decisions, and confidence can be audited.
   and run offline strict policy construction followed by one Discovery IID reset.
 - **Artifacts:** `src/mech_int_vla/`, `tests/`, `configs/`, `AMENDMENTS.md`.
 - **Compute / cost:** laptop-only synthetic tests; no GPU policy passes or rollouts.
+
+### 2026-08-03 10:28 CEST — SETUP-004: concrete-config loader compatibility failure
+
+- **Stage:** setup
+- **Question:** Does the committed offline loader construct the pinned checkpoint
+  config under LeRobot v0.6.0?
+- **Pre-state / commit:** `bab7e6e`; both immutable snapshots resolved offline and
+  all 54 tests passed on the rollout host.
+- **Method:** Invoked only the `load-policy` construction command with
+  `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`; inspected the resulting traceback
+  and the immutable LeRobot `PreTrainedConfig.from_pretrained` implementation.
+- **Inputs and controls:** Exact frozen GPU environment and snapshots. The failure
+  occurred while parsing `config.json`, before model construction, weight loading,
+  a forward pass, simulator initialization, or any outcome.
+- **Results:** Calling `SmolVLAConfig.from_pretrained` directly causes draccus to
+  reject the checkpoint's required `"type": "smolvla"` discriminator as an unknown
+  concrete dataclass field. LeRobot's v0.6.0 dispatch contract is to call the
+  registered `PreTrainedConfig.from_pretrained`, which uses that discriminator to
+  choose `SmolVLAConfig` before parsing the remaining fields.
+- **Interpretation:** This is a loader API mismatch in the integration code, not a
+  model, data, or scientific-protocol result.
+- **Confidence:** high; the traceback occurs deterministically at config decoding and
+  the intended dispatch path is explicit in the pinned source.
+- **Decision:** Dispatch via `PreTrainedConfig`, fail closed unless the returned type
+  is exactly `SmolVLAConfig`, and add a unit-test assertion for that path. No protocol
+  amendment is required because no representation, condition, metric, or selection
+  rule changes.
+- **Next step:** Commit/push the compatibility fix, resync it, and retry the same
+  offline strict-load command.
+- **Artifacts:** `src/mech_int_vla/snapshots.py`, `tests/test_snapshots.py`.
+- **Compute / cost:** approximately one failed Python construction process; zero
+  policy forward passes and zero simulator steps.

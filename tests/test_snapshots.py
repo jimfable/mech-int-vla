@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import sys
 import types
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -13,9 +14,11 @@ from mech_int_vla.snapshots import (
     POLICY_ALLOW_PATTERNS,
     SnapshotError,
     SnapshotPaths,
+    lerobot_python_source_sha256,
     load_locked_smolvla,
     load_model_input_lock,
     resolve_snapshot_paths,
+    verify_lerobot_source,
 )
 
 ROOT = Path(__file__).parents[1]
@@ -35,6 +38,10 @@ def test_environment_lock_has_full_model_revisions() -> None:
     assert lock.policy_revision == "31d453f7edd78c839a8bbc39744a292686daf0de"
     assert lock.base_vlm_revision == "7b375e1b73b11138ff12fe22c8f2822d8fe03467"
     assert lock.policy_n_action_steps == 1
+    assert lock.lerobot_commit == "30da8e687a6dfc617fcd94afc367ac7071c376ce"
+    assert lock.lerobot_python_sha256 == (
+        "79603648ff8d9889072449099da6e60b6a92fe0da84108e2bae1dc765b217ecd"
+    )
     assert lock.policy_model_sha256 == (
         "9a9f6413e42c0f332fccbce9a0dc796af2790f82cf002f791cdbf7e01e1afca8"
     )
@@ -113,6 +120,26 @@ def test_snapshot_resolution_fails_closed_on_checkpoint_byte_mismatch(
         resolve_snapshot_paths(ROOT / "environment.lock")
 
 
+def test_lerobot_source_fingerprint_rejects_compatible_source_drift(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "lerobot"
+    (package / "policies").mkdir(parents=True)
+    (package / "__init__.py").write_text("VERSION = 'pinned'\n", encoding="utf-8")
+    model = package / "policies" / "model.py"
+    model.write_text("def private_chunk(): return 50\n", encoding="utf-8")
+    digest = lerobot_python_source_sha256(package)
+    lock = replace(
+        load_model_input_lock(ROOT / "environment.lock"),
+        lerobot_python_sha256=digest,
+    )
+    assert verify_lerobot_source(lock, package) == package.resolve()
+
+    model.write_text("def private_chunk(): return 49\n", encoding="utf-8")
+    with pytest.raises(SnapshotError, match="LeRobot Python source SHA-256 mismatch"):
+        verify_lerobot_source(lock, package)
+
+
 def test_policy_and_tokenizer_are_both_overridden_to_local_snapshot(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -123,6 +150,10 @@ def test_policy_and_tokenizer_are_both_overridden_to_local_snapshot(
     vlm_path.mkdir()
     paths = SnapshotPaths(policy_path, vlm_path, lock)
     captured = {}
+    monkeypatch.setattr(
+        "mech_int_vla.snapshots.verify_lerobot_source",
+        lambda candidate: captured.setdefault("source_lock", candidate),
+    )
 
     class FakeConfig:
         pass

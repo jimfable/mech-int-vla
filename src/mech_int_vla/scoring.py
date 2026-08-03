@@ -366,6 +366,8 @@ class ScoringAdapter(Protocol):
 
     def policy_queue_state(self) -> Any | None: ...
 
+    def validate_content_links(self, links: ContentLinks) -> None: ...
+
 
 @dataclass(frozen=True)
 class ScoringResult:
@@ -951,6 +953,11 @@ def score_replay_to_sidecar(
     """Replay, score, validate, and atomically publish one episode sidecar."""
 
     frozen_transforms = validate_frozen_transform_order(transforms)
+    link_validator = getattr(adapter, "validate_content_links", None)
+    if link_validator is not None:
+        if not callable(link_validator):
+            raise ScoringError("adapter content-link validator is not callable")
+        link_validator(links)
     parent, destination = _sidecar_destination(Path(output_root), replay)
     initial_rng = _rng_state()
     initial_queue, queue_accessible = _safe_queue_state(adapter)

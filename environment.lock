@@ -17,6 +17,7 @@ dataset_revision = "a1aaacb7f6cd6ee5fb43120f673cebb0cfea7dd4"
 lerobot_repository = "https://github.com/huggingface/lerobot.git"
 lerobot_tag = "v0.6.0"
 lerobot_commit = "30da8e687a6dfc617fcd94afc367ac7071c376ce"
+lerobot_python_sha256 = "79603648ff8d9889072449099da6e60b6a92fe0da84108e2bae1dc765b217ecd"
 
 libero_repository = "https://github.com/huggingface/LIBERO.git"
 libero_commit = "8561c60eea2fb93096146f240194649df73d8b1e"

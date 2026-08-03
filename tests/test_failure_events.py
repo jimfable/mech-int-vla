@@ -142,7 +142,7 @@ def rollout_artifact(
         (trace("success", actions=3, success=True), ()),
         (
             trace("invalid", valid=False),
-            ("reset_pose_out_of_tolerance", "settle_velocity_out_of_tolerance"),
+            ("settle_velocity_out_of_tolerance", "reset_pose_out_of_tolerance"),
         ),
     ],
     ids=("valid-failed", "valid-success", "invalid-reset"),
@@ -161,7 +161,7 @@ def test_rollout_conversion_preserves_validated_arrays_flags_reasons_and_hashes(
     assert artifact_identity.trajectory_sha256 == digest("e")
     assert converted.valid_reset is item.valid_reset
     assert converted.success is item.success
-    assert converted.validity_reasons == reasons
+    assert converted.validity_reasons == tuple(sorted(reasons))
     for converted_name, artifact_name in (
         ("actions", "actions"),
         ("frame_control_step", "frame_control_step"),

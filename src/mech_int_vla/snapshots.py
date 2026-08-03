@@ -8,7 +8,10 @@ therefore be imported on machines without the rollout stack.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
+import os
 import re
+import stat
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +33,10 @@ class ModelInputLock:
     policy_n_action_steps: int
     base_vlm_repo: str
     base_vlm_revision: str
+    lerobot_repository: str
+    lerobot_commit: str
+    lerobot_source_archive_sha256: str
+    lerobot_python_sha256: str
 
 
 @dataclass(frozen=True)
@@ -109,6 +116,70 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def lerobot_python_source_sha256(package_root: str | Path) -> str:
+    """Hash every LeRobot Python source file with path and length framing."""
+
+    root = Path(package_root)
+    if root.is_symlink() or not root.is_dir():
+        raise SnapshotError("LeRobot package root must be a real directory")
+    files = sorted(
+        root.rglob("*.py"), key=lambda path: path.relative_to(root).as_posix()
+    )
+    if not files:
+        raise SnapshotError("LeRobot package root contains no Python sources")
+    digest = hashlib.sha256(b"lerobot-python-v1\0")
+    for path in files:
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        if path.is_symlink():
+            raise SnapshotError(f"LeRobot source may not be a symlink: {path}")
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            descriptor = os.open(path, flags)
+            try:
+                opened = os.fstat(descriptor)
+                if not stat.S_ISREG(opened.st_mode):
+                    raise SnapshotError(f"LeRobot source is not regular: {path}")
+                data = bytearray()
+                while block := os.read(descriptor, 1024 * 1024):
+                    data.extend(block)
+            finally:
+                os.close(descriptor)
+        except OSError as exc:
+            raise SnapshotError(f"could not hash LeRobot source {path}: {exc}") from exc
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
+    return digest.hexdigest()
+
+
+def verify_lerobot_source(
+    lock: ModelInputLock, package_root: str | Path | None = None
+) -> Path:
+    """Require installed LeRobot Python bytes to match the pinned commit tree."""
+
+    if package_root is None:
+        try:
+            spec = importlib.util.find_spec("lerobot")
+        except (ImportError, ValueError) as exc:
+            raise SnapshotError(
+                "could not resolve the installed LeRobot package"
+            ) from exc
+        if spec is None or spec.origin is None:
+            raise SnapshotError("could not resolve the installed LeRobot package")
+        package_root = Path(spec.origin).parent
+    root = Path(package_root)
+    actual = lerobot_python_source_sha256(root)
+    if actual != lock.lerobot_python_sha256:
+        raise SnapshotError(
+            "installed LeRobot Python source SHA-256 mismatch: "
+            f"expected {lock.lerobot_python_sha256}, got {actual}"
+        )
+    return root.resolve()
+
+
 def load_model_input_lock(path: str | Path) -> ModelInputLock:
     """Read the model-related immutable values from ``environment.lock``."""
 
@@ -125,6 +196,10 @@ def load_model_input_lock(path: str | Path) -> ModelInputLock:
         "policy_n_action_steps",
         "base_vlm_repo",
         "base_vlm_revision",
+        "lerobot_repository",
+        "lerobot_commit",
+        "lerobot_source_archive_sha256",
+        "lerobot_python_sha256",
     )
     missing = [name for name in required if name not in raw]
     if missing:
@@ -142,10 +217,15 @@ def load_model_input_lock(path: str | Path) -> ModelInputLock:
         policy_n_action_steps=int(raw["policy_n_action_steps"]),
         base_vlm_repo=str(raw["base_vlm_repo"]),
         base_vlm_revision=str(raw["base_vlm_revision"]),
+        lerobot_repository=str(raw["lerobot_repository"]),
+        lerobot_commit=str(raw["lerobot_commit"]),
+        lerobot_source_archive_sha256=str(raw["lerobot_source_archive_sha256"]),
+        lerobot_python_sha256=str(raw["lerobot_python_sha256"]),
     )
     for name, revision in (
         ("policy_revision", lock.policy_revision),
         ("base_vlm_revision", lock.base_vlm_revision),
+        ("lerobot_commit", lock.lerobot_commit),
     ):
         if len(revision) != 40 or any(
             char not in "0123456789abcdef" for char in revision
@@ -157,6 +237,14 @@ def load_model_input_lock(path: str | Path) -> ModelInputLock:
         raise SnapshotError(
             "policy_model_sha256 must be a lowercase 64-character SHA-256 digest"
         )
+    for name, value in (
+        ("lerobot_source_archive_sha256", lock.lerobot_source_archive_sha256),
+        ("lerobot_python_sha256", lock.lerobot_python_sha256),
+    ):
+        if _SHA256.fullmatch(value) is None:
+            raise SnapshotError(
+                f"{name} must be a lowercase 64-character SHA-256 digest"
+            )
     return lock
 
 
@@ -250,6 +338,7 @@ def load_locked_smolvla(
     exact local base-VLM snapshot before either can perform a Hub lookup.
     """
 
+    verify_lerobot_source(snapshots.lock)
     try:
         from lerobot.configs.policies import PreTrainedConfig
         from lerobot.policies.factory import make_pre_post_processors

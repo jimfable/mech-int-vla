@@ -296,7 +296,7 @@ def failure_event_trace_from_artifact(
             episode_id=rollout.episode_id,
             valid_reset=validity["valid"],
             success=outcome["success"],
-            validity_reasons=reasons,
+            validity_reasons=tuple(sorted(reasons)),
             actions=arrays["actions"],
             frame_control_step=arrays["frame_control_step"],
             frame_eef_position=arrays["frame_eef_position"],

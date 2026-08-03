@@ -845,3 +845,40 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** leave the preserved disk stopped while no concrete GPU job is
   authorized. Resume only after a future explicit calibration plan and the same
   read-only disk/asset checks; never recycle the instance.
+
+### 2026-08-03 17:52 CEST — LOCK-AUDIT-001: defer the Calibration lock safely
+
+- **Stage:** post-Reality-Gate protocol/guard audit
+- **Question:** Is the repository ready to create the immutable
+  `prereg-locked-v1` tag and open Calibration without changing the frozen
+  protocol or silently weakening a guard?
+- **Evidence:** A bounded read-only review checked the preregistration, guard
+  implementation, current Git state, and the completed/verified Discovery backup.
+  The result and backup commits are pushed, but the worktree still contains later
+  uncommitted hardening; no tracked `locks/reality_gate_frozen.json` exists and no
+  `prereg-locked-v1` tag exists. The Calibration guard requires a tracked freeze
+  file, the tag exactly at `HEAD`, and a clean worktree. The existing guard payload
+  shape also differs from the richer post-gate receipt (it expects a structured
+  `selected_variable` and top-level policy revision), so a hand-written lock would
+  not be a safe substitute for an integration-tested receipt.
+- **Read-only probe:** A local attempt to derive orientation eligibility from the
+  exact 40 backed-up `b491dc7` artifacts did not produce a decision; the
+  uncommitted helper rejected its own constructed result because its factory-token
+  wiring is incomplete. No eligibility value, variable switch, freeze file, tag,
+  remote job, or artifact was created or changed by this probe.
+- **Interpretation:** The Reality Gate behavioral result is complete, but the
+  protocol lock is not yet auditable. The calibrated run must use a new clean lock
+  commit (while retaining `b491dc7` as immutable Discovery provenance), and the
+  exact weighting/cadence choice for orientation eligibility must be recorded
+  before its value is used. This is an implementation/guard blocker, not a failed
+  scientific gate.
+- **Decision:** Do not tag, do not launch Calibration, and do not access Locked
+  Test. Keep the Vast instance stopped. Finish and test the receipt-to-guard and
+  failure-event freeze integration, commit the hardening separately with explicit
+  outcome-visibility disclosure, then create `prereg-locked-v1` exactly at the
+  clean lock commit only after the protocol guard passes.
+- **Status:** the durable Discovery backup remains verified at
+  `artifacts/raw-backup-ready/`; GitHub remains at the result/stop checkpoint;
+  instance 46677323 is stopped at the retained-storage rate. No external blocker
+  remains for the already completed Reality Gate, but Calibration is intentionally
+  deferred pending this local guard work and authorization boundary.

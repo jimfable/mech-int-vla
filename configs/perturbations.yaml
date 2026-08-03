@@ -1,0 +1,58 @@
+version: 1
+angles_in_degrees: true
+reality_gate:
+  cells:
+    - {name: yaw_neg_15, family: object_yaw, value: -15}
+    - {name: yaw_pos_15, family: object_yaw, value: 15}
+    - {name: yaw_neg_30, family: object_yaw, value: -30}
+    - {name: yaw_pos_30, family: object_yaw, value: 30}
+    - {name: yaw_neg_45, family: object_yaw, value: -45}
+    - {name: yaw_pos_45, family: object_yaw, value: 45}
+  assignment: balanced_hash_without_replacement_three_cells_per_init_state
+calibration_rollouts:
+  - {index: 0, name: iid, family: iid}
+  - {index: 1, name: yaw_neg_45, family: object_yaw, value: -45}
+  - {index: 2, name: yaw_neg_30, family: object_yaw, value: -30}
+  - {index: 3, name: yaw_neg_15, family: object_yaw, value: -15}
+  - {index: 4, name: yaw_pos_15, family: object_yaw, value: 15}
+  - {index: 5, name: yaw_pos_30, family: object_yaw, value: 30}
+  - {index: 6, name: yaw_pos_45, family: object_yaw, value: 45}
+  - index: 7
+    name: planar_axis_3cm
+    family: object_planar_translation
+    magnitude_m: 0.03
+    direction_assignment: balanced_hash_cardinal
+locked_test_rollouts:
+  - {index: 0, name: iid, family: iid}
+  - {index: 1, name: yaw_neg_37_5, family: object_yaw, value: -37.5}
+  - {index: 2, name: yaw_neg_22_5, family: object_yaw, value: -22.5}
+  - {index: 3, name: yaw_pos_22_5, family: object_yaw, value: 22.5}
+  - {index: 4, name: yaw_pos_37_5, family: object_yaw, value: 37.5}
+  - index: 5
+    name: planar_diagonal_4_5cm
+    family: object_planar_translation
+    magnitude_m: 0.045
+    direction_assignment: balanced_hash_diagonal
+  - index: 6
+    name: camera_yaw_neg_5
+    family: agentview_camera_extrinsic
+    yaw: -5
+    lateral_m: -0.02
+  - index: 7
+    name: camera_yaw_pos_5
+    family: agentview_camera_extrinsic
+    yaw: 5
+    lateral_m: 0.02
+counterfactual_score_grid:
+  - {name: brightness_0_85, family: photometric, multiplier: 0.85, action_transform: identity}
+  - {name: brightness_1_15, family: photometric, multiplier: 1.15, action_transform: identity}
+  - {name: camera_yaw_neg_3, family: camera_render, yaw: -3, action_transform: identity}
+  - {name: camera_yaw_pos_3, family: camera_render, yaw: 3, action_transform: identity}
+  - {name: object_yaw_neg_15, family: object_pose, yaw: -15, terminology: counterfactual_action_drift}
+  - {name: object_yaw_pos_15, family: object_pose, yaw: 15, terminology: counterfactual_action_drift}
+validity:
+  settle_steps_after_edit: 10
+  max_invalid_fraction: 0.10
+  reject_nan_or_inf: true
+  reject_workspace_exit: true
+  reject_initial_success: true

@@ -1,0 +1,404 @@
+# Preregistration: Internal Geometry vs. Robot Behavior
+
+**Protocol version:** 1.0
+
+**Written:** 2026-08-03 (Europe/Berlin)
+**Outcome visibility at writing:** no policy rollout or success/failure outcome has
+been observed. Only public checkpoint/dataset metadata, official source code, and
+environment connectivity were inspected.
+
+This document operationalizes `start.md` v2. It does not change the fixed primary
+question or estimand. Any later change must be entered in `AMENDMENTS.md` before it
+is implemented.
+
+## 1. Confirmatory question and estimands
+
+### Primary estimand
+
+Let `p_m(e,t)` be model `m`'s probability that episode `e` will fail, predicted at
+predefined candidate state `t`, and let `y_e=1` denote failure. Define binary log
+loss `ell(p,y) = -y log(p) - (1-y) log(1-p)`, clipping probabilities to
+`[1e-6, 1-1e-6]`. For each episode, average loss over the five primary candidate
+states at control steps `{0, 50, 100, 150, 200}` that occur before termination.
+The primary estimand is
+
+`Delta_LL = mean_e(LL_M2,e - LL_M1,e)`
+
+on Locked Test. Negative values favor M2. The headline relative lift is
+`-Delta_LL / mean_e(LL_M1,e)`.
+
+The primary prediction claim succeeds only if:
+
+1. relative log-loss lift is at least 3%; and
+2. the cluster-bootstrap 90% interval for `Delta_LL` lies strictly below zero.
+
+This is a paired comparison: M1 and M2 are evaluated on identical episodes and
+candidate states. Brier score, AUROC, M2-vs-M0, and condition rankings are
+secondary.
+
+### Lead-time estimand
+
+All three predictors are additionally evaluated every five environment control
+steps. A model alarms after three consecutive threshold exceedances. Each model's
+threshold is fixed on Calibration at an episode-level false-positive rate no
+greater than 10% among successful episodes (choose the lowest threshold satisfying
+the constraint; break ties toward the higher threshold).
+
+For a failed episode, lead is `max(0, t_failure - t_alarm)`; a missed or late alarm
+receives zero. `t_failure` is the first task-specific failure event when one can be
+identified from simulator/contact traces, otherwise the 520-step terminal horizon.
+The internal lead-time claim requires median paired `(lead_M2 - lead_M1) >= 5`
+control steps and a cluster-bootstrap 90% interval strictly above zero. Detection
+rate and conditional-on-detection lead are reported but cannot substitute for this
+estimand.
+
+## 2. Immutable software and model inputs
+
+- Policy: `lerobot/smolvla_libero` at Hub revision
+  `31d453f7edd78c839a8bbc39744a292686daf0de`.
+- Dataset metadata reference: `lerobot/libero` at Hub revision
+  `a1aaacb7f6cd6ee5fb43120f673cebb0cfea7dd4`.
+- LeRobot: tag `v0.6.0`, commit
+  `30da8e687a6dfc617fcd94afc367ac7071c376ce`.
+- LIBERO integration: the dependency revision resolved by the LeRobot v0.6.0
+  `libero` extra. The resolved commit and full package hash lock will be added to
+  `environment.lock` before the first rollout; this is environment resolution, not
+  a protocol change.
+- Control mode: relative, 7-D action.
+- SmolVLA inference: `num_steps=10`, `chunk_size=50`, and
+  `n_action_steps=1`, matching the published SmolVLA LIBERO evaluation setting.
+- Cameras: agent view and wrist view, 360 x 360 environment render, with checkpoint
+  preprocessing unchanged.
+- Episode horizon: 520 environment control steps plus LeRobot's standard ten
+  post-reset no-op settling steps.
+- Inference stochasticity: deterministic, hash-derived PyTorch/CUDA generators.
+  Common random numbers are reused across models and counterfactual pairs.
+
+Changing a pinned revision, action execution horizon, controller mode, episode
+horizon, camera inputs, or denoising steps requires an amendment.
+
+## 3. Ordered task shortlist and Reality Gate
+
+The first task that passes both gates below is selected; later tasks are not tried
+after a pass. All attempts and counts are reported.
+
+1. `libero_10`, task ID 9: *pick up the book and place it in the back compartment
+   of the caddy*. Primary object: book. Planar yaw symmetry order `s=2`.
+2. `libero_10`, task ID 3: *turn on the stove and put the moka pot on it*. Primary
+   object: moka pot. Symmetry order `s=1`.
+3. `libero_10`, task ID 2: *put the yellow and white mug in the microwave and close
+   it*. Primary object: yellow/white mug. Symmetry order `s=1`.
+
+The order favors objects with grasp-relevant planar orientation and uses only tasks
+present in the checkpoint's 40-task training dataset.
+
+### Reproduction gate
+
+For each attempted task, run the ten Discovery base initialization IDs `0..9`
+without perturbation. The task passes if at least 6/10 episodes succeed. No
+inference or environment parameter is tuned between task attempts.
+
+### Perturbation dynamic-range gate
+
+For the same ten initialization IDs, run three preassigned yaw perturbations per
+ID (30 episodes total), balanced over signs and absolute magnitudes 15, 30, and 45
+degrees as generated by `configs/perturbations.yaml`. A perturbation is valid only
+if the simulator settles without penetration/instability and the object remains in
+the workspace; invalid episodes are rerun once with identical parameters to test
+determinism, then counted and reported as invalid rather than failures.
+
+The task passes if at least 90% of the 30 perturbations are valid and the failure
+rate among valid perturbed episodes is in `[0.20, 0.80]`. Point estimates decide
+the gate; Wilson intervals are reported descriptively.
+
+If no task passes, the confirmatory project stops before Calibration. The resulting
+artifact becomes a preregistered robustness/reproduction report; no synthetic
+shortcut becomes a main result.
+
+### Variable eligibility and single fallback
+
+The primary variable is relative planar orientation
+`theta_rel = wrap(yaw_eef - yaw_object)` represented as
+`[cos(s theta_rel), sin(s theta_rel)]`. It is eligible if pose extraction passes
+unit tests, at least 90% of states are finite, and the Discovery circular standard
+deviation is at least 15 degrees modulo the object's symmetry.
+
+If ineligible, make the single permitted methodological switch to relative planar
+position `[x_object-x_eef, y_object-y_eef]`. If position extraction is also
+ineligible, use binary object/gripper contact and label the switch explicitly. No
+later switch based on probe or prediction performance is permitted.
+
+After task/variable selection, commit the Reality Gate manifest and tag it
+`prereg-locked-v1` before collecting Calibration outcomes.
+
+## 4. Split construction and episode allocation
+
+LIBERO provides 50 fixed initial states per task. Base initialization IDs, reset
+seeds, and episode conditions are disjoint across splits:
+
+- Discovery: base init IDs `0..9`.
+- Calibration: base init IDs `10..29`.
+- Locked Test: base init IDs `30..49`.
+
+Reset seeds are deterministic and nonoverlapping (`100000+` Discovery,
+`200000+` Calibration, `300000+` Test). Exact generation is specified in
+`configs/split_protocol.yaml`. Each episode artifact stores suite/task, base init
+ID, reset seed, perturbation cell, policy revision, and code commit.
+
+### Calibration allocation
+
+Each of 20 base init IDs is evaluated in eight actual-rollout cells (160 episodes):
+
+1. IID;
+2-7. object yaw `{-45,-30,-15,+15,+30,+45}` degrees; and
+8. a balanced 3 cm planar translation whose signed axis is hash-assigned.
+
+### Locked Test allocation
+
+Each of 20 base init IDs is evaluated in eight cells (160 episodes):
+
+1. IID;
+2-5. interstitial object yaw `{-37.5,-22.5,+22.5,+37.5}` degrees;
+6. a held-out 4.5 cm diagonal planar translation; and
+7-8. held-out agent-view camera extrinsic perturbations of `-5` and `+5` degrees
+yaw with a 2 cm lateral displacement. The wrist camera is unchanged.
+
+The camera-extrinsic actual-rollout family is absent from Calibration. Locked Test
+conditions may be instantiated only after the calibration-freeze guard exists.
+
+The primary uncertainty unit is the base initialization ID. Bootstrap resampling
+draws 20 init-ID clusters with replacement and retains all eight cells and all
+candidate states in each selected cluster. We use 10,000 deterministic bootstrap
+replicates and percentile 90% intervals. Episode-cell bootstrap intervals are
+reported only as a less-conservative sensitivity analysis.
+
+## 5. Candidate states and recorded ground truth
+
+Policy behavior is closed loop with replanning every environment step. Full
+low-cost traces are recorded every step. Expensive M0/M2 scores and internal
+activations are computed at steps divisible by five. Primary prediction uses the
+five fixed steps in Section 1; full five-step cadence is used for lead time.
+
+Each trace records raw observations, issued actions, success, simulator time,
+robot end-effector pose, primary-object pose, goal/receptacle pose, gripper state,
+object/gripper contact flags, and task-specific success predicates. Raw images are
+stored losslessly or as versioned videos with frame-to-step indices. Terminal
+success is the environment's `check_success()`. Failure is no success by step 520.
+
+The failure-event annotation is deterministic and task specific:
+
+- missed grasp: first close command followed by 10 steps without object/gripper
+  contact while end-effector distance begins increasing;
+- dropped object: contact transitions from present to absent and object height
+  subsequently reaches the support surface outside the goal region;
+- irrecoverable workspace exit: object center leaves the reachable bounds derived
+  from valid Discovery states plus 5 cm;
+- otherwise terminal horizon 520.
+
+These rules are unit-tested on Discovery videos and then frozen at the Reality Gate
+lock. Manual Locked Test relabeling is prohibited.
+
+## 6. Equal-information counterfactual grid and cost accounting
+
+At every scored candidate state, all methods receive the same original state and
+the same transformation definitions. Counterfactual rendering restores the exact
+simulator state after use and never advances the rollout.
+
+The fixed score grid is:
+
+- photometric, `T_g=I`: brightness multipliers 0.85 and 1.15;
+- camera render, `T_g=I`: agent-view yaw -3 and +3 degrees with no state change;
+- object pose (neutral counterfactual action drift): primary-object yaw -15 and +15
+  degrees in cloned simulator state.
+
+Object-pose transformations are not called symmetries and their output difference
+is called counterfactual action drift. Valid render perturbations use the term
+output-equivariance error only when `T_g=I`.
+
+Output uncertainty uses eight fixed Gaussian flow-noise draws on the original
+state. Counterfactual action drift uses four common draws per original/transformed
+pair. Features summarize the first ten predicted actions after unnormalization.
+
+For every method record policy forward passes, intervention passes, CUDA-event GPU
+seconds, wall time, peak allocated GPU memory, stored activation bytes, and count
+of calibration episodes. Costs are reported (a) including calibration and (b)
+amortizing one-time cost over 1,000 deployment episodes.
+
+## 7. Predictor definitions
+
+### M0: output-only
+
+M0 features are computed without activations or simulator state:
+
+- mean and maximum standardized L2 action drift for each counterfactual family;
+- render-equivariance error for brightness and camera transforms;
+- trace covariance, mean pairwise distance, and 90th-percentile distance across
+  eight output samples;
+- mean action-chunk norm and within-chunk temporal roughness.
+
+### M1: strongest non-internal baseline
+
+M1 contains M0 plus privileged state features:
+
+- raw phase-aware relative end-effector/object/goal pose, symmetry-aware yaw,
+  gripper opening, contact flags, and normalized step;
+- median standardized distance to the five nearest Calibration states from
+  successful episodes within the same task phase;
+- distance to the nearest state among all Calibration episodes; and
+- local failure fraction among the 25 nearest Calibration states.
+
+Calibration coverage features are generated out of fold with the entire episode
+and base init ID excluded from its reference set. Locked Test uses the full
+Calibration reference. Task phase is the deterministic four-state sequence
+`pregrasp`, `grasped`, `transport`, `placed`, derived only from pose/contact/success
+predicates.
+
+### M2: white-box increment
+
+M2 contains M1 plus features from the single representation/probe selected on
+Calibration:
+
+- symmetry-aware probe equivariance error under the two known object-yaw
+  counterfactuals;
+- circular dispersion under brightness/camera render counterfactuals (`T_g=I`);
+- probe output resultant norm and distance from its successful-Calibration norm
+  distribution;
+- circular dispersion over the fixed flow-noise draws when the selected
+  representation is noise dependent; and
+- target controllability gain and off-target/target action-change ratio under
+  fixed +10/-10 degree minimum-norm probe-subspace interventions.
+
+No M2 inference feature compares the probe prediction with simulator ground truth.
+Ground truth is used only to train/select the probe on Calibration. Thus M2-vs-M0
+retains a deployment-relevant interpretation after a simulator-labelled one-time
+calibration phase.
+
+## 8. Representation hooks and circular probes
+
+Checkpoint configuration `num_expert_layers=0` means the action expert inherits
+all 16 VLM layer depths; it does not mean that no action expert exists. Because the
+implementation manually executes submodules, hooks are placed on layer-norm inputs
+rather than on expert-layer outputs.
+
+The three preregistered activation locations are:
+
+1. **VLM context:** input to
+   `model.vlm_with_expert.get_vlm_model().text_model.norm` during prefix-cache
+   construction; take the final state token after the norm.
+2. **Early expert residual:** input to
+   `model.vlm_with_expert.lm_expert.layers[4].input_layernorm`, i.e. the residual
+   after expert layer 3; mean over 50 action tokens.
+3. **Late expert residual:** input to
+   `model.vlm_with_expert.lm_expert.layers[12].input_layernorm`, i.e. the residual
+   after expert layer 11; mean over 50 action tokens.
+
+Expert locations are captured at fixed flow times `t=1.0` and `t=0.5` (denoising
+steps 0 and 5 of 10), yielding five candidate representation/time combinations in
+total. Hooks must pass shape and causal-patching unit tests before data collection.
+
+For each candidate representation, fit a ridge probe from centered activation `h`
+to `[cos(s theta_rel), sin(s theta_rel)]` using group 5-fold CV by base init ID.
+Ridge alpha is selected from `{1e-4,1e-3,1e-2,1e-1,1,10,100}`. Normalize the
+2-vector only at prediction time. Selection minimizes mean held-out symmetry-aware
+circular MAE. If candidates are within one standard error, prefer, in order: VLM
+context; early `t=1.0`; early `t=0.5`; late `t=1.0`; late `t=0.5`. Exactly one
+combination and one fitted probe are frozen. Report all candidate results.
+
+Probe training/evaluation weights each episode equally regardless of number of
+states. Random-label, time-only, proprioception-only, and mean-prediction baselines
+are required. Decodability alone is never called causal evidence.
+
+## 9. Failure-predictor fitting and calibration
+
+Calibration outcomes may select one shared predictor family using only grouped
+5-fold out-of-fold M1 log loss:
+
+- standardized L2 logistic regression with `C` in
+  `{0.01,0.1,1,10,100}`; or
+- histogram gradient boosting with learning rate `{0.03,0.1}`, max leaves
+  `{7,15}`, minimum leaf size `{10,20}`, L2 `{0,1}`, and at most 200 trees.
+
+The selected family/hyperparameters are then used unchanged for M0, M1, and M2.
+Each episode contributes total sample weight one. Missing-value indicators are
+included and transformations are fitted on Calibration only. A one-dimensional
+Platt calibrator is fit from group-out-of-fold predictions for each model; the base
+model is then refit on all Calibration data. Clipping is only for numerical log
+loss.
+
+Kill Switch 1 is evaluated on group-out-of-fold Calibration predictions: if M0 or
+M1 AUROC is at least 0.95, the selected failure mode/variable is not changed (the
+single Reality-Gate switch is already spent); instead the result is explicitly
+reported as a black-box/privileged ceiling and internal work continues only as a
+secondary causal analysis. This conservative interpretation prevents an
+outcome-driven variable switch.
+
+## 10. Causal subspace patching
+
+The confirmatory intervention uses the two-dimensional row space of the selected
+circular probe. For donor `d` and recipient `r`, with orthogonal projector `P`
+onto that row space, patch
+
+`h_r' = h_r + alpha P(h_d - h_r)`.
+
+For token sequences, the same projected shift is applied to every action token; for
+VLM context it is applied only to the state token before rebuilding the KV cache.
+Calibration chooses `alpha` from `{0.25,0.5,1.0}` as the smallest value with the
+expected target-action sign and an off-manifold rate no greater than 5%. It is then
+frozen.
+
+Pairs must match on task phase; contact state; gripper opening within 0.01; eef
+position within 2 cm; object position within 2 cm; normalized time within 0.10; and
+all task-specific non-primary object predicates. Confirmatory donors must differ in
+symmetry-aware orientation by 30-90 degrees. Matching uses Calibration only for
+tolerance checks and test-strength selection.
+
+Locked Test attempts 60 pairs, balanced over three deterministic pairing seeds.
+If fewer than 30 valid pairs remain, patching is declared inconclusive rather than
+negative. Required comparisons:
+
+1. target sign: patched action change has positive dot product with the natural
+   donor-minus-recipient change in yaw action (index 5), averaged over first ten
+   actions;
+2. specificity: absolute change in non-yaw action dimensions is no more than 25%
+   of the standardized yaw effect;
+3. 1,000 norm-matched random 2-D subspaces generated by pairing seed;
+4. off-manifold check: patched activation five-nearest-neighbor distance does not
+   exceed the 95th percentile of natural Calibration activations; and
+5. matched-donor control with orientation difference below 5 degrees.
+
+Patching specificity succeeds when the median target effect exceeds the 95th
+percentile of the random-control distribution, off-target change satisfies the 25%
+bound, sign correctness exceeds 50% with a 90% cluster interval above 50%, and the
+effect direction agrees for at least two of three pairing seeds and at least two of
+the three preregistered activation locations in a supporting (non-selected-layer)
+analysis. A result confined to one seed/layer/strength is labelled unstable.
+
+## 11. Locked Test access and analysis order
+
+Before any Locked Test rollout:
+
+1. write the selected task/variable, representation/probe, predictor family and
+   hyperparameters, model coefficients/artifact hashes, alarm thresholds, patch
+   strength, and Calibration metrics to `locks/calibration_frozen.json`;
+2. commit all code/configs/artifact manifests;
+3. tag the commit `calibration-locked-v1`; and
+4. make the test CLI verify that tag's tree and refuse a dirty worktree.
+
+Locked Test is run once. Analysis order is fixed: data-integrity checks; primary
+paired log loss; Brier/AUROC; M2-vs-M0; lead time; condition rankings; causal
+patching; cost accounting; sensitivity analyses. Bugs that affect labels or
+predictions require an amendment and a fully documented rerun; analytical
+preference is never a reason to rerun.
+
+## 12. Reporting and interpretation
+
+All point estimates, intervals, failed task attempts, invalid perturbations,
+calibration candidates, and cost measurements are public. Claims follow the
+decision table in `start.md`. In particular:
+
+- M2 > M0 but not M1 means internals can replace some privileged state information
+  but add no value beyond it;
+- lift without patching supports a detector, not a mechanistic claim;
+- patching without lift is mechanistically interesting but economically weak; and
+- neither result is a publishable negative finding, not a reason to modify the
+  protocol.

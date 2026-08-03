@@ -1,0 +1,27 @@
+# Immutable research inputs (initial lock, 2026-08-03)
+
+policy_repo = "lerobot/smolvla_libero"
+policy_revision = "31d453f7edd78c839a8bbc39744a292686daf0de"
+policy_model_file = "model.safetensors"
+policy_num_flow_steps = 10
+policy_chunk_size = 50
+policy_n_action_steps = 1
+
+dataset_repo = "lerobot/libero"
+dataset_revision = "a1aaacb7f6cd6ee5fb43120f673cebb0cfea7dd4"
+
+lerobot_repository = "https://github.com/huggingface/lerobot.git"
+lerobot_tag = "v0.6.0"
+lerobot_commit = "30da8e687a6dfc617fcd94afc367ac7071c376ce"
+
+libero_repository = "https://github.com/huggingface/lerobot-libero.git"
+libero_commit = "PENDING_ENVIRONMENT_RESOLUTION"
+
+python_version = "PENDING_ENVIRONMENT_RESOLUTION"
+torch_version = "PENDING_ENVIRONMENT_RESOLUTION"
+cuda_version = "PENDING_ENVIRONMENT_RESOLUTION"
+gpu_name = "NVIDIA GeForce RTX 5090 (provider configuration; verify at runtime)"
+mujoco_gl = "egl"
+
+# A generated hash-locked Python dependency file will supplement this file before
+# the first rollout. Filling PENDING values does not alter the scientific protocol.

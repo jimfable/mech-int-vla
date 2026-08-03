@@ -1,0 +1,30 @@
+version: 1
+group_key: [suite, task_id, base_init_state_id]
+splits:
+  discovery:
+    init_state_ids: {start: 0, stop_inclusive: 9}
+    seed_base: 100000
+  calibration:
+    init_state_ids: {start: 10, stop_inclusive: 29}
+    seed_base: 200000
+  locked_test:
+    init_state_ids: {start: 30, stop_inclusive: 49}
+    seed_base: 300000
+seed_formula: "seed_base + task_rank*1000 + base_init_state_id*10 + condition_index"
+policy_execution:
+  control_mode: relative
+  max_steps: 520
+  reset_noop_steps: 10
+  n_action_steps: 1
+scoring:
+  full_score_stride_steps: 5
+  primary_steps: [0, 50, 100, 150, 200]
+bootstrap:
+  cluster: base_init_state_id
+  replicates: 10000
+  interval: 0.90
+  seed: 260803
+locked_test_guard:
+  required_file: locks/calibration_frozen.json
+  required_tag: calibration-locked-v1
+  require_clean_worktree: true

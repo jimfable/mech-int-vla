@@ -495,5 +495,4 @@ left to environment resolution.
   hashes, per-sidecar provenance and execution-mode binding, continuous validation
   of scientific/deterministic fields, stratified cost reporting, unchanged final
   feature code, fail-closed publication, and continued Locked-Test exclusion.
-- **Implementing commit:** `PENDING` (must be replaced by the committed coordinator
-  implementation hash before any remote cutover)
+- **Implementing commit:** `6cb3733a197f1374025fd08fee44d065e3350c04`

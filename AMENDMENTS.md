@@ -563,4 +563,4 @@ left to environment resolution.
   exact identity/signal-mask checks, Python-only signalling, full post-exit
   validation, residue rejection, exclusive flock acquisition, immutable hashes,
   and fail-closed fallback to the serial scorer mitigate those risks.
-- **Implementing commit:** `PENDING`
+- **Implementing commit:** `257309f64c60fc49a97babf6bc77603019ef1fb9`

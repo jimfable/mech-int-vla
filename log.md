@@ -1279,6 +1279,33 @@ that experiments, negative results, decisions, and confidence can be audited.
   the instance or open Locked Test until the complete local tree and independent
   inventory digest have been verified.
 
+### 2026-08-04 07:04 CEST — CALIBRATION-ANALYSIS-001: read-only failure/probe run started
+
+- **Guard:** The remote Calibration receipt and all 160 raw artifacts were
+  already independently validated against the immutable `prereg-locked-v1`
+  checkout and inventory digest
+  `2040ad899b95cc691b23afd58cfb9f03de63f5573c035ff8a77216c382840ca8`. A
+  read-only Sol-xhigh boundary review confirmed that the Discovery-derived
+  failure bounds/rules may be applied unchanged to Calibration and that the
+  exact stride-5 pre-action cohort assembly is protocol-correct when the full
+  160-cell manifest is asserted first.
+- **Execution:** A separate runner was launched on Vast PID `110887`, writing
+  only to the new analysis path
+  `/workspace/research-artifacts/analysis-staging/calibration-analysis-18d6494-probe-002`.
+  It independently checks the guard authority, lock/freeze hashes, manifest
+  topology, raw provenance, and then computes deterministic Failure-Event
+  annotations, the five-candidate grouped circular probe CV, and the required
+  Mean/Time/Proprioception/Random-label controls. The prior failed attempts
+  were fail-closed schema/import corrections and created no raw or backup
+  writes.
+- **Isolation:** The four disjoint resumable backup streams continue unchanged
+  in `artifacts/calibration-backup-stage.incomplete/`; no analysis process writes
+  there or to the raw tree. Locked Test remains closed. M0/M1/M2 score/features
+  will only start after this probe receipt, because no score sidecars exist yet.
+- **Current result:** The runner is CPU-bound while validating/reading the
+  immutable raw set (GPU idle); no result receipt is published yet. Vast stays
+  running because the off-instance backup is incomplete.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

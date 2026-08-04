@@ -1251,6 +1251,20 @@ that experiments, negative results, decisions, and confidence can be audited.
   in-progress off-instance backup. Do not stop the instance, access Locked
   Test, or begin calibration freeze/analysis before checksum verification.
 
+### 2026-08-04 05:40 CEST — CALIBRATION-BACKUP-002: transfer progressing
+
+- **Read-only status:** Direct SSH and the Vast API still show instance
+  46677323 `running`, Supervisor `EXITED`, GPU idle, 160 remote Calibration
+  directories, and the completion receipt present. The locked checkout remains
+  clean at the immutable commit.
+- **Backup progress:** The four disjoint proxy-Rsync streams have reached about
+  1.9 GiB and 28 local trajectory files in
+  `artifacts/calibration-backup-stage.incomplete/`; no stream overlap or remote
+  mutation is present. Local free space is about 17 GiB.
+- **Decision:** Keep the streams and instance running until all 320 files,
+  receipts, and the independent inventory digest are verified. Locked Test and
+  Calibration freeze remain closed.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

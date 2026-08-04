@@ -1188,6 +1188,21 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** Preserve the serial authoritative job unchanged and defer all
   analysis/backup actions until the full 160-cell receipt is present.
 
+### 2026-08-04 03:40 CEST — CALIBRATION-RUNNING-008: progress at 149/160
+
+- **Read-only audit:** Vast instance 46677323 is running and reachable through
+  the verified SSH proxy. Supervisor `mech_vla_calibration` is healthy and
+  `RUNNING`; the locked checkout is clean at the immutable
+  `prereg-locked-v1` commit `18d64941bc8c899b06306fbec21d1c8d2c08f2ea`.
+- **Progress:** 149 Calibration artifact directories are present and
+  receipt-validated (manifest indices 0–148). Staging is empty, no completion
+  receipt exists yet, and index 149 is the sole active child. GPU telemetry is
+  healthy (RTX 5090, 15% utilization at audit time).
+- **Decision:** Leave the authoritative serial process untouched: no restart,
+  duplicate, parallelization, overwrite, reorder, or Locked-Test access. Wait
+  for the final cell and completion receipt before independent validation,
+  backup, and post-calibration analysis.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

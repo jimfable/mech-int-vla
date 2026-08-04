@@ -1538,3 +1538,67 @@ that experiments, negative results, decisions, and confidence can be audited.
   It records `locked_test_accessed=false` and no writes to either sidecar set. The
   requested read-only Sol-xhigh review is in progress; no amendment, signal,
   shard, or worker launch is permitted before its verdict.
+
+### 2026-08-04 13:35 CEST — CALIBRATION-SCORING-CUTOVER-002: cost-only scheduling switch executed
+
+- **Protocol check before action:** The requested read-only GPT-5.6-Sol-xhigh
+  scheduling review returned a conditional GO: a scheduling-only change is
+  protocol-compatible when the scientific arrays, actions, activations, seeds,
+  transformations, availability masks, and non-cost metadata remain identical,
+  the four runtime-cost arrays are excluded from M0/M1/M2, completed serial
+  sidecars are immutable, and future allocation is an outcome-blind manifest
+  complement. Those conditions were recorded in `AMENDMENTS.md` and bound by
+  the pre-action commits `6ad024c`, `6cb3733`, and `7fe9ebc`.
+- **Exact equivalence:** The independent four-episode/145-state receipt
+  `artifacts/calibration-scoring-equivalence-audit-18d6494-001/equivalence-audit.json`
+  (SHA-256
+  `68904e5285b029f7330cdeb43de85d35396f8e10b10f898298744ab086dc6d85`)
+  reports exactly four differing arrays: `original_cost`, `transformed_cost`,
+  `intervention_minus_cost`, and `intervention_plus_cost`. All scientific
+  arrays and non-cost metadata are byte-identical. Within those arrays,
+  deterministic counts and activation-byte fields are identical; only
+  `cuda_event_ms`, `wall_time_ns`, and allocator peak fields differ. Static
+  dependency extraction and a cost-perturbation regression both show that none
+  of the four arrays is an M0/M1/M2 predictor input.
+- **Failed first cutover, preserved:** The original coordinator observed
+  serial boundary 31 (`libero_10-task5-calibration-init13-cell6`, digest
+  `1eaf900ee6d67b232e6c50850631a8943283eb3714a5a09a92d9601c03f48716`) and
+  dispatched its one planned SIGINT. The detached Python scorer inherited
+  `SIGINT=SIG_IGN`, so the signal was durably recorded as ineffective and the
+  coordinator failed closed without planning or launching workers. No receipt
+  was rewritten and no sidecar was overwritten. A second read-only Sol-xhigh
+  recovery review approved a narrowly bounded Python-only SIGTERM recovery;
+  the recovery amendment and implementation were committed before signalling
+  (`a19a50e`, `257309f`, bound checkout `fa64127`).
+- **Clean recovery boundary:** At 13:35:03 CEST the recovery coordinator saw
+  the fresh parsed completion for boundary 40,
+  `libero_10-task5-calibration-init14-cell7`, digest
+  `2c77eacdbf651c54f033bad12cbc405213e1319e327b21db7e8e9a49a3d7528f`.
+  It revalidated the exact PID/start-tick/cmdline and signal masks, fsynced a
+  hash-linked intent, sent exactly one `libc_pidfd_send_signal(SIGTERM)` to
+  Python PID `111494`, never signalled the `flock` wrapper, never called
+  `os.kill`, observed both exits, reacquired the global lock exclusively, and
+  made no causal claim about the exit. The possibly started
+  `init15-cell0` computation is explicitly non-authoritative with cost
+  unavailable; it is not part of the frozen denominator.
+- **Frozen allocation:** Independent validation rehashed all 40 frozen serial
+  sidecars and reproduced inventory digest
+  `3ec590dc746f74397c4ced256525290207588a3ca9eb620f659b2b21bbfc5528`.
+  The plan digest is
+  `7c6b9e92f3b570e576b8c4394af8c627641cdd940f1aa7f979e17fb6af5421a0` and
+  its 120-ID manifest complement is exactly two disjoint alternating shards
+  of 60 episodes, with labels, features, durations, state counts, and costs
+  excluded from assignment. Every recovery, cutover, plan, and runtime receipt
+  has `locked_test_accessed=false`.
+- **Live continuation:** The recovery coordinator PID `133377` now holds the
+  global score lock and exactly two workers are active: PID `134073` (worker 0)
+  and PID `134074` (worker 1). Each has its own held lock and staging root,
+  uses the unchanged locked checkout/probe/raw artifacts/model/seeds/transforms,
+  and currently uses 2,314 MiB VRAM. At the latest check, two new promotions
+  were atomically published (`42/160` authoritative sidecars); all 40 prior
+  serial sidecars remain unchanged and the serial scorer is gone. The final
+  execution receipt will report physical costs by execution mode (`serial`
+  family, including the documented benchmark-contention subtype, versus
+  `two_worker`) and will keep those costs outside predictor inputs. The full
+  raw off-instance backup streams remain independent and incomplete; no worker
+  writes to them. Locked Test remains closed.

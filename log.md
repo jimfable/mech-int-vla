@@ -1413,3 +1413,19 @@ that experiments, negative results, decisions, and confidence can be audited.
   without restart, duplication, overwrite, reordering, or transfer-method
   changes. Locked Test stays closed and the Vast instance stays running while
   concrete jobs remain active.
+
+### 2026-08-04 09:44 CEST — CALIBRATION-SCORING-005: replay remains healthy
+
+- **Read-only status:** Vast 46677323 is still `running`; no
+  `mech_vla_calibration` process remains because the authoritative collection
+  already completed 160/160. The one flock-protected scorer is alive with
+  active RTX 5090 utilization and has published 11 validated sidecars through
+  `libero_10-task5-calibration-init11-cell2`. No feature-stage files or error
+  output have appeared; this is expected until all 160 valid episodes are
+  scored.
+- **Backup:** The four disjoint Rsync streams remain active at approximately
+  4.8 GiB / 134 files, with no target overlap or raw-artifact mutation.
+- **Decision:** Leave both concrete jobs untouched. Do not restart,
+  parallelize, reorder, stop, or access Locked Test; continue monitoring until
+  the scorer publishes its downstream receipts and the backup independently
+  verifies the canonical inventory.

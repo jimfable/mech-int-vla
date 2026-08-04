@@ -1203,6 +1203,18 @@ that experiments, negative results, decisions, and confidence can be audited.
   for the final cell and completion receipt before independent validation,
   backup, and post-calibration analysis.
 
+### 2026-08-04 03:50 CEST — CALIBRATION-RUNNING-009: progress at 153/160
+
+- **Read-only audit:** The existing Vast Supervisor remains healthy and
+  `RUNNING` on the clean immutable `prereg-locked-v1` checkout; no competing
+  calibration or Locked-Test process is present.
+- **Progress:** 153 of 160 Calibration artifact directories are complete and
+  staged count remains zero. Index 153 is the sole active child; the final
+  completion receipt is not present yet. GPU telemetry remains responsive.
+- **Decision:** Continue monitoring the same serial Supervisor only. No restart,
+  duplicate, overwrite, reorder, or early analysis/Locked-Test access is
+  permitted before the 160-cell receipt and independent backup validation.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

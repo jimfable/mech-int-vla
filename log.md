@@ -1265,6 +1265,20 @@ that experiments, negative results, decisions, and confidence can be audited.
   receipts, and the independent inventory digest are verified. Locked Test and
   Calibration freeze remain closed.
 
+### 2026-08-04 06:41 CEST — CALIBRATION-BACKUP-003: transfer progressing
+
+- **Read-only status:** Vast instance 46677323 remains `running` while the
+  authoritative Supervisor is `EXITED`; direct SSH reports an idle RTX 5090,
+  160 remote Calibration directories, a present completion receipt, and the
+  clean immutable checkout.
+- **Backup progress:** The four non-overlapping proxy-Rsync processes now hold
+  approximately 3.4 GiB and 44 trajectory files in the ignored incomplete
+  staging path. Local free space is approximately 16 GiB, sufficient for the
+  remaining raw set with headroom.
+- **Decision:** Continue the existing transfer streams unchanged. Do not stop
+  the instance or open Locked Test until the complete local tree and independent
+  inventory digest have been verified.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

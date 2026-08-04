@@ -1397,3 +1397,19 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** Preserve both concrete jobs and the current immutable remote
   artifacts. No restart, parallel scoring, transfer-method switch, stop, or
   Locked-Test access is warranted.
+
+### 2026-08-04 08:43 CEST — CALIBRATION-SCORING-004: serial replay advancing
+
+- **Read-only status:** Vast instance 46677323 remains `running`; the
+  collection Supervisor is cleanly exited after its immutable 160-episode
+  receipt, with `locked_test_accessed=false`. The single flock-protected
+  scorer PID `111494` is healthy and has advanced to six validated sidecars
+  (Calibration cells `init10-cell0` through `init10-cell5`). No feature-stage
+  publication or error output is present yet; GPU telemetry remains active.
+- **Backup:** The four original disjoint Rsync streams remain active and
+  unchanged at approximately 4.8 GiB / 134 local raw files. The incomplete
+  staging tree is still not a final backup and is not used by scoring.
+- **Decision:** Keep the serial scorer and existing backup streams running
+  without restart, duplication, overwrite, reordering, or transfer-method
+  changes. Locked Test stays closed and the Vast instance stays running while
+  concrete jobs remain active.

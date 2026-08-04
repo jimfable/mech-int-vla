@@ -1236,6 +1236,21 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** Keep Locked Test closed and defer calibration analysis/freeze
   until the off-instance backup is complete and independently revalidated.
 
+### 2026-08-04 04:41 CEST — CALIBRATION-BACKUP-001: transfer still active
+
+- **Read-only status:** The Vast API reports instance 46677323 still
+  `running`; direct SSH confirms `mech_vla_calibration` is `EXITED` and the RTX
+  5090 is idle. The proxy status route temporarily timed out under the active
+  transfer load, so no process-control action was attempted.
+- **Backup progress:** Four non-overlapping proxy-Rsync streams remain active
+  in `artifacts/calibration-backup-stage.incomplete/`, with 514 MB and ten
+  trajectory files present at this checkpoint. The remote canonical set and
+  completion receipt remain immutable; local finalization is blocked until all
+  320 files and the independent inventory digest match.
+- **Decision:** Preserve the streams and keep the instance running for the
+  in-progress off-instance backup. Do not stop the instance, access Locked
+  Test, or begin calibration freeze/analysis before checksum verification.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

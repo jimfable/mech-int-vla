@@ -1175,6 +1175,19 @@ that experiments, negative results, decisions, and confidence can be audited.
   reordering, overwrite, or Locked-Test access. Continue monitoring until the
   160-cell receipt appears.
 
+### 2026-08-04 02:37 CEST — CALIBRATION-RUNNING-007: progress at 123/160
+
+- **Read-only audit:** Vast 46677323 and `mech_vla_calibration` remain healthy;
+  the locked checkout is clean and still exactly at `prereg-locked-v1`. Old
+  Discovery services remain stopped, and no Locked-Test process exists.
+- **Progress:** 123 Calibration artifact directories (indices 0–122) are
+  complete and receipt-validated; staging count is zero and the completion
+  receipt is not yet present. Index 123 (`init25-cell3`) is the only active
+  child. Recent index 122 is valid/successful (171 steps; metadata
+  `101e2c57…`, trajectory `8a81f367…`).
+- **Decision:** Preserve the serial authoritative job unchanged and defer all
+  analysis/backup actions until the full 160-cell receipt is present.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

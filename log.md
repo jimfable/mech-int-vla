@@ -1215,6 +1215,27 @@ that experiments, negative results, decisions, and confidence can be audited.
   duplicate, overwrite, reorder, or early analysis/Locked-Test access is
   permitted before the 160-cell receipt and independent backup validation.
 
+### 2026-08-04 04:28 CEST — CALIBRATION-COMPLETE-001: receipt and remote validation passed
+
+- **Completion:** The authoritative Supervisor exited cleanly after publishing
+  all 160 Calibration cells. Its immutable completion receipt binds commit
+  `18d64941bc8c899b06306fbec21d1c8d2c08f2ea`, tag `prereg-locked-v1`, and
+  `locked_test_accessed=false`.
+- **Independent validation:** A second read-only loader checked every cell's
+  manifest provenance, metadata/trajectory hashes, task identity, reset flag,
+  success flag, action count, and exact two-file layout. All 160 passed;
+  107 succeeded, 53 reached the preregistered failure limit, 160 resets were
+  valid, and total control steps were 47,067. The remote 320-file inventory
+  digest is
+  `2040ad899b95cc691b23afd58cfb9f03de63f5573c035ff8a77216c382840ca8`.
+- **Backup state:** The new ignored local staging path
+  `artifacts/calibration-backup-stage.incomplete/` is receiving the raw set via
+  four disjoint, recoverable proxy-SSH Rsync streams. No file is written by
+  more than one stream; finalization waits for a complete local inventory and
+  digest match. The Vast instance remains running until that guard passes.
+- **Decision:** Keep Locked Test closed and defer calibration analysis/freeze
+  until the off-instance backup is complete and independently revalidated.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

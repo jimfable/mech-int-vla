@@ -16,6 +16,8 @@ artifacts/failure-events/
 artifacts/cache/
 artifacts/raw-backup-stage.incomplete/
 artifacts/raw-backup-ready/
+artifacts/calibration-backup-stage.incomplete/
+artifacts/calibration-backup-ready/
 *.mp4
 *.npy
 *.npz

@@ -1429,3 +1429,33 @@ that experiments, negative results, decisions, and confidence can be audited.
   parallelize, reorder, stop, or access Locked Test; continue monitoring until
   the scorer publishes its downstream receipts and the backup independently
   verifies the canonical inventory.
+
+### 2026-08-04 10:28 CEST — CALIBRATION-SCORING-BENCHMARK-001: isolated two-worker benchmark planned
+
+- **Question and non-interference guard:** Test whether episode-level scheduling
+  can accelerate the remaining Calibration M0/M1/M2 replay without changing any
+  scientific computation. The authoritative flock-protected serial scorer PID
+  `111494` is healthy at 15/160 validated sidecars and remains completely
+  untouched. All benchmark writes are confined to the new
+  `calibration-two-worker-benchmark-18d6494-001` staging tree with separate
+  worker roots and locks; benchmark publication is exclusive/atomic and cannot
+  overwrite the authoritative score root.
+- **Frozen benchmark:** Re-score four already completed manifest episodes with
+  two disjoint workers: worker 0 receives `init10-cell2` and `init10-cell4`;
+  worker 1 receives `init10-cell3` and `init10-cell7`. Both dynamically use the
+  exact frozen serial runner, authority/manifest, environment lock, offline
+  model snapshot, raw artifacts, bound probe, seeds, transforms, replay and
+  scoring functions. The benchmark script is content-bound at SHA-256
+  `1318497b1d2ef39fc6558ef5481316c4fa8a2087b150c68d782fd722bf62620c`.
+- **Measurements and decision rule:** Compare both `metadata.json` and
+  `primitives.npz` byte-for-byte and record every array digest, total elapsed
+  throughput versus the four uninterrupted serial publication intervals, plus
+  one-second GPU utilization/VRAM, worker and serial CPU/RSS, and host RAM.
+  Switching is forbidden unless every complete sidecar is byte-identical and
+  throughput clearly improves. A switch would additionally require a narrow
+  read-only Sol-xhigh protocol/provenance review before touching the serial
+  process. Hash divergence or weak speedup means retaining the serial scorer.
+- **Safety:** Worker parent-death guards, benchmark process-group cleanup,
+  serial PID/start-time/executable/command identity checks, a 2,400-second
+  watchdog, immutable reference rechecks, fresh-path requirements, and
+  benchmark-script digest checks are fail-closed. Locked Test remains closed.

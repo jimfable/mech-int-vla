@@ -1602,3 +1602,25 @@ that experiments, negative results, decisions, and confidence can be audited.
   `two_worker`) and will keep those costs outside predictor inputs. The full
   raw off-instance backup streams remain independent and incomplete; no worker
   writes to them. Locked Test remains closed.
+
+### 2026-08-04 15:53 CEST — CALIBRATION-BACKUP-RESUME-001: resumable raw backup restored after app restart
+
+- **Read-only diagnosis:** The app restart left the four earlier local proxy-
+  Rsync processes absent; the incomplete local stage was intact at about 4.8
+  GiB and 134 files. The remote Calibration raw tree remained immutable and
+  the GPU scoring coordinator/workers were unaffected. No remote source or
+  authoritative score path was modified.
+- **Partition guard:** A fresh remote inventory check confirmed exactly four
+  disjoint init ranges, each containing 80 canonical raw files:
+  `init10–14`, `init15–19`, `init20–24`, and `init25–29`. No range overlaps
+  another, and the local incomplete target is the sole destination.
+- **Action:** Resumed the same SSH-proxy Rsync method with `--checksum` and
+  `--partial`, without `--delete` or any remote write. Four separate local
+  sessions now own the four ranges; the first resumed stream has already
+  added two missing files. The transfer remains an incomplete staging copy and
+  is not yet treated as a verified backup.
+- **Concurrent science:** The guarded two-worker scorer remains authoritative
+  and healthy at 58/160 published sidecars (18 promotions), with worker PIDs
+  `134073`/`134074`, held per-worker locks, and 2,314 MiB VRAM each. No serial
+  scorer, residue, or error receipt is present. The Vast instance stays running
+  while GPU and transfer jobs are concrete; Locked Test remains closed.

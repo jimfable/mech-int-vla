@@ -426,3 +426,74 @@ left to environment resolution.
   access until the new guard passes. The original Discovery code commit remains
   separately recorded as `b491dc76641efe3a5c5d7eef6bb87af13d85f10b`.
 - **Implementing commit:** `b41867e01ba50e6eec7fd869b4b18c0b8ea46a01`
+
+### 2026-08-04 — Continue Calibration replay scoring with two disjoint workers
+
+- **Prior protocol commit:** `08342a4ea05ca5a0b021ce4651db65eda5423073`
+- **Technical reason:** The preregistered replay scorer was launched serially, but
+  a later isolated two-worker benchmark on four already completed Calibration
+  episodes increased aggregate throughput from `9.0420` to `15.5347` episodes per
+  hour including model load (`1.7181x`). An independent audit over all 145 scored
+  states in those episodes found that only the four explicitly recorded
+  runtime/resource arrays (`original_cost`, `transformed_cost`,
+  `intervention_minus_cost`, and `intervention_plus_cost`) differed. Every
+  scientific array, action, selected activation, seed, transformation,
+  availability mask, and non-cost metadata field was identical. Within the cost
+  arrays, the deterministic counts and activation-byte fields were identical;
+  differences were confined to CUDA-event time, wall time, and physical peak
+  allocation fields. The audit receipt has SHA-256
+  `68904e5285b029f7330cdeb43de85d35396f8e10b10f898298744ab086dc6d85`.
+  Static dependency inspection and a regression test that perturbs all four cost
+  arrays establish that none is an M0/M1/M2 predictor input. A read-only
+  GPT-5.6-Sol-xhigh review therefore classified the outputs as scientifically
+  equivalent, though not whole-sidecar byte-identical, and approved a guarded
+  scheduling-only cutover.
+- **Exact change:** Preserve and hash-freeze every already published authoritative
+  serial sidecar without recomputation or replacement. Observe the serial runner's
+  next JSON `score_completed` line, then send one interrupt to the exact
+  PID/start-time/executable/cmdline identity, wait for both Python and its `flock`
+  wrapper to exit, and require a fully loadable new sidecar, a stable rescan of all
+  frozen hashes, no staging/publish-lock residue, and exclusive acquisition of the
+  existing global score lock. Freeze the exact complement of valid manifest IDs
+  at that boundary and assign it deterministically, by manifest order and without
+  consulting labels, features, durations, state counts, or costs, to two disjoint
+  workers. A coordinator holds the global lock throughout; each worker has its own
+  lock and same-filesystem staging root, uses the unchanged locked checkout,
+  weights, raw artifacts, probe, seeds, transforms, offline environment, and
+  scoring functions, fully validates each staged sidecar, and atomically promotes
+  it only if the authoritative destination does not exist. Any unexpected output,
+  overwrite attempt, provenance mismatch, OOM, or worker failure stops both
+  workers fail-closed. On completion, the unchanged serial finalizer runs with
+  zero missing episodes to perform the original allocation audit, M0/M1/M2 feature
+  construction, and predictor fitting. Locked Test remains closed.
+
+  A hash-bound execution receipt assigns every authoritative sidecar to exactly
+  one of three physical-cost modes: `serial`,
+  `serial_with_equivalence_benchmark_contention`, or `two_worker`. Physical
+  latency and memory costs are reported separately by mode; summed per-worker
+  CUDA/wall time is not treated as parallel makespan, and per-process CUDA peaks
+  are not treated as aggregate device peaks. Coordinator elapsed time, model-load
+  and benchmark overhead, and device-level peak telemetry are separate. Logical
+  counts and deterministic activation-byte totals remain aggregable. The receipt
+  is provenance-only and is never exposed to the feature pipeline.
+- **Affected hypotheses/metrics:** M0/M1/M2 scientific features, transformations,
+  predictors, targets, splits, probe, estimands, and statistical rules do not
+  change. Runtime and resource-cost summaries become explicitly mixed-execution
+  descriptive measurements and must be stratified by execution mode. The observed
+  speedup is post-hoc operational evidence, not a confirmatory scheduler claim.
+- **Outcome visibility:** All 160 raw Calibration rollouts and their success/failure
+  outcomes, the selected probe, 22 or more serially published scoring sidecars by
+  the eventual cutover, the four-episode benchmark, and its equivalence and
+  throughput results were visible before this decision. No Locked Test artifact,
+  label, score, path contents, or protected-split output was accessed.
+- **Bias risk and mitigation:** The four-episode audit supports high confidence for
+  the observed 145 states but only medium confidence when generalized to the
+  remaining episodes. Scheduling was chosen after throughput was observed, and
+  the benchmark overlapped the serial process, so physical-cost and speed claims
+  are susceptible to selection and contention bias. Mitigation is a prospective
+  amendment before cutover, outcome-blind deterministic sharding, immutable serial
+  hashes, per-sidecar provenance and execution-mode binding, continuous validation
+  of scientific/deterministic fields, stratified cost reporting, unchanged final
+  feature code, fail-closed publication, and continued Locked-Test exclusion.
+- **Implementing commit:** `PENDING` (must be replaced by the committed coordinator
+  implementation hash before any remote cutover)

@@ -10,10 +10,13 @@ and publish with Linux ``RENAME_NOREPLACE``.  The original locked serial runner 
 then invoked with zero pending episodes to run its unchanged allocation, feature,
 and predictor finalizer.
 
-The coordinator may be restarted with ``resume``.  Existing authoritative
-sidecars are never replaced, and promotion reconciliation requires a hash-bound
-prepared receipt.  Physical costs are mapped to an execution mode in a separate
-receipt that is not an input to M0/M1/M2.
+The coordinator may be restarted with ``resume``.  The narrowly scoped
+``recover-ignored-sigint`` mode appends a truthful SIGTERM recovery chain when
+the original detached scorer inherited SIGINT as ignored; it never rewrites the
+original attempt and never repeats a durably dispatched signal.  Existing
+authoritative sidecars are never replaced, and promotion reconciliation requires
+a hash-bound prepared receipt.  Physical costs are mapped to an execution mode
+in a separate receipt that is not an input to M0/M1/M2.
 """
 
 from __future__ import annotations
@@ -47,6 +50,13 @@ sys.dont_write_bytecode = True
 SCHEMA_VERSION = 1
 KIND = "calibration_two_worker_scoring_continuation"
 AMENDMENT_COMMIT = "6ad024c44165ea94d23dffaaab593b5478bd441a"
+RECOVERY_AMENDMENT_COMMIT = "a19a50eff6aa3e0f886e7597f2e0a80e3e38735a"
+ORIGINAL_IMPLEMENTATION_COMMIT = "6cb3733a197f1374025fd08fee44d065e3350c04"
+ORIGINAL_CONTROL_HEAD = "7fe9ebce54926bbb9b8ae3a47161f2fb478b5cab"
+ORIGINAL_SCRIPT_SHA256 = (
+    "e0f96f9818d45611e737962772ba9302447a1c747a5d556843c3686ccee7e654"
+)
+ORIGINAL_EXIT_TIMEOUT_SECONDS = 120.0
 EQUIVALENCE_AUDIT_SHA256 = (
     "68904e5285b029f7330cdeb43de85d35396f8e10b10f898298744ab086dc6d85"
 )
@@ -235,7 +245,11 @@ def _require_control_checkout(
     head = _git(root, "rev-parse", "HEAD")
     if _git(root, "status", "--porcelain=v1", "--untracked-files=all"):
         raise RuntimeError("control checkout is dirty")
-    for ancestor in (AMENDMENT_COMMIT, expected_implementation_commit):
+    for ancestor in (
+        AMENDMENT_COMMIT,
+        RECOVERY_AMENDMENT_COMMIT,
+        expected_implementation_commit,
+    ):
         result = subprocess.run(
             ["git", "-C", str(root), "merge-base", "--is-ancestor", ancestor, head],
             check=False,
@@ -254,6 +268,7 @@ def _require_control_checkout(
         "control_head": head,
         "implementation_commit": expected_implementation_commit,
         "amendment_commit": AMENDMENT_COMMIT,
+        "recovery_amendment_commit": RECOVERY_AMENDMENT_COMMIT,
         "script_sha256": script_sha,
     }
 
@@ -602,13 +617,159 @@ def _runner_processes(serial_runner: Path) -> list[dict[str, Any]]:
     return result
 
 
-def _wait_for_score_completed(
+def _signal_status(pid: int) -> dict[str, Any]:
+    path = Path("/proc") / str(pid) / "status"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise RuntimeError(f"cannot read signal status for PID {pid}") from exc
+    values: dict[str, int] = {}
+    raw: dict[str, str] = {}
+    for line in lines:
+        if ":" not in line:
+            continue
+        name, value = line.split(":", 1)
+        if name not in {"SigPnd", "ShdPnd", "SigBlk", "SigIgn", "SigCgt"}:
+            continue
+        encoded = value.strip()
+        try:
+            values[name] = int(encoded, 16)
+        except ValueError as exc:
+            raise RuntimeError(f"malformed {name} mask for PID {pid}") from exc
+        raw[name] = encoded
+    required = {"SigPnd", "ShdPnd", "SigBlk", "SigIgn", "SigCgt"}
+    if set(values) != required:
+        raise RuntimeError(f"incomplete signal status for PID {pid}")
+    return {"pid": pid, "hex_masks": raw, "integer_masks": values}
+
+
+def _signal_mask_contains(status: Mapping[str, Any], field: str, signum: int) -> bool:
+    masks = status.get("integer_masks")
+    if not isinstance(masks, Mapping) or field not in masks:
+        raise RuntimeError(f"signal status lacks {field}")
+    return bool(int(masks[field]) & (1 << (signum - 1)))
+
+
+def _validate_recovery_signal_status(status: Mapping[str, Any]) -> dict[str, Any]:
+    sigint = signal.SIGINT
+    sigterm = signal.SIGTERM
+    if not _signal_mask_contains(status, "SigIgn", sigint):
+        raise RuntimeError("SIGINT is not recorded as inherited ignored")
+    for field in ("SigPnd", "ShdPnd", "SigBlk", "SigCgt"):
+        if _signal_mask_contains(status, field, sigint):
+            raise RuntimeError(f"SIGINT unexpectedly present in {field}")
+    for field in ("SigPnd", "ShdPnd", "SigBlk", "SigIgn", "SigCgt"):
+        if _signal_mask_contains(status, field, sigterm):
+            raise RuntimeError(f"SIGTERM unexpectedly present in {field}")
+    return {
+        "sigint": {
+            "signal_number": int(sigint),
+            "ignored": True,
+            "blocked": False,
+            "pending": False,
+        },
+        "sigterm": {
+            "signal_number": int(sigterm),
+            "ignored": False,
+            "blocked": False,
+            "pending": False,
+            "custom_caught": False,
+        },
+        "proc_status": dict(status),
+    }
+
+
+def _capture_recovery_signal_status(identity: Mapping[str, Any]) -> dict[str, Any]:
+    if not _identity_matches(identity):
+        raise RuntimeError("serial identity changed before signal-status capture")
+    status = _signal_status(int(identity["pid"]))
+    validated = _validate_recovery_signal_status(status)
+    if not _identity_matches(identity):
+        raise RuntimeError("serial identity changed during signal-status capture")
+    return validated
+
+
+def _pidfd_open_linux(pid: int) -> int:
+    libc = ctypes.CDLL(None, use_errno=True)
+    function = getattr(libc, "pidfd_open", None)
+    if function is None:
+        raise RuntimeError("libc pidfd_open is unavailable")
+    function.argtypes = [ctypes.c_int, ctypes.c_uint]
+    function.restype = ctypes.c_int
+    descriptor = int(function(pid, 0))
+    if descriptor < 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error), pid)
+    return descriptor
+
+
+def _pidfd_send_signal_linux(descriptor: int, signum: int) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    function = getattr(libc, "pidfd_send_signal", None)
+    if function is None:
+        raise RuntimeError("libc pidfd_send_signal is unavailable")
+    function.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_uint,
+    ]
+    function.restype = ctypes.c_int
+    result = int(function(descriptor, signum, None, 0))
+    if result != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error), descriptor)
+
+
+def _open_validated_pidfd(identity: Mapping[str, Any]) -> int:
+    if not sys.platform.startswith("linux"):
+        raise RuntimeError("pidfd recovery signalling requires Linux")
+    if not _identity_matches(identity):
+        raise RuntimeError("serial identity changed before pidfd acquisition")
+    try:
+        descriptor = _pidfd_open_linux(int(identity["pid"]))
+    except OSError as exc:
+        raise RuntimeError("cannot acquire serial scorer pidfd") from exc
+    try:
+        observed = _process_identity(int(identity["pid"]))
+        if observed != dict(identity):
+            raise RuntimeError("serial identity changed during pidfd acquisition")
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _log_identity(path: Path) -> dict[str, Any]:
+    resolved = path.resolve()
+    if path.is_symlink() or not resolved.is_file():
+        raise RuntimeError("serial log is not a regular non-symlink")
+    info = resolved.stat()
+    return {
+        "path": str(resolved),
+        "device": info.st_dev,
+        "inode": info.st_ino,
+        "mode": stat.S_IFMT(info.st_mode),
+        "size_bytes": info.st_size,
+        "mtime_ns": info.st_mtime_ns,
+    }
+
+
+def _assert_same_log_object(expected: Mapping[str, Any], path: Path) -> dict[str, Any]:
+    observed = _log_identity(path)
+    for field in ("path", "device", "inode", "mode"):
+        if observed[field] != expected.get(field):
+            raise RuntimeError(f"serial log identity changed ({field})")
+    return observed
+
+
+def _wait_for_score_completed_record(
     log_path: Path,
     offset: int,
     serial_identity: Mapping[str, Any],
     *,
     timeout_seconds: float,
-) -> tuple[dict[str, Any], int]:
+) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_seconds
     buffer = b""
     with log_path.open("rb", buffering=0) as stream:
@@ -623,13 +784,36 @@ def _wait_for_score_completed(
             buffer += chunk
             while b"\n" in buffer:
                 raw, buffer = buffer.split(b"\n", 1)
+                end_offset = stream.tell() - len(buffer)
+                start_offset = end_offset - len(raw) - 1
                 try:
                     value = json.loads(raw.decode("utf-8"))
                 except (UnicodeDecodeError, json.JSONDecodeError):
                     continue
                 if isinstance(value, dict) and value.get("kind") == "score_completed":
-                    return value, stream.tell() - len(buffer)
+                    return {
+                        "boundary_line": value,
+                        "raw_line_sha256": _sha256_bytes(raw),
+                        "log_start_offset": start_offset,
+                        "log_end_offset": end_offset,
+                    }
     raise RuntimeError("timed out waiting for a serial score_completed boundary")
+
+
+def _wait_for_score_completed(
+    log_path: Path,
+    offset: int,
+    serial_identity: Mapping[str, Any],
+    *,
+    timeout_seconds: float,
+) -> tuple[dict[str, Any], int]:
+    record = _wait_for_score_completed_record(
+        log_path,
+        offset,
+        serial_identity,
+        timeout_seconds=timeout_seconds,
+    )
+    return dict(record["boundary_line"]), int(record["log_end_offset"])
 
 
 def _stable_inventory_log_baseline(
@@ -712,6 +896,68 @@ def _wait_identities_exit(
         time.sleep(0.05)
     live = [identity["pid"] for identity in identities if _identity_matches(identity)]
     raise RuntimeError(f"serial identities did not exit after SIGINT: {live}")
+
+
+def _wait_process_instance_exit(
+    identity: Mapping[str, Any], *, timeout_seconds: float, role: str
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    pid = int(identity["pid"])
+    expected_start = int(identity["start_ticks"])
+    while time.monotonic() < deadline:
+        observed = _process_identity(pid)
+        if observed is None:
+            return {
+                "role": role,
+                "pid": pid,
+                "start_ticks": expected_start,
+                "exit_observed_unix_time_ns": time.time_ns(),
+                "pid_reused_at_observation": False,
+            }
+        if int(observed["start_ticks"]) != expected_start:
+            return {
+                "role": role,
+                "pid": pid,
+                "start_ticks": expected_start,
+                "exit_observed_unix_time_ns": time.time_ns(),
+                "pid_reused_at_observation": True,
+                "replacement_start_ticks": int(observed["start_ticks"]),
+            }
+        if observed != dict(identity):
+            raise RuntimeError(
+                f"{role} identity mutated while the same process instance remained"
+            )
+        time.sleep(0.05)
+    raise RuntimeError(f"{role} process instance did not exit after SIGTERM: {pid}")
+
+
+def _assert_process_instance_absent(identity: Mapping[str, Any], *, role: str) -> None:
+    observed = _process_identity(int(identity["pid"]))
+    if observed is None:
+        return
+    if int(observed["start_ticks"]) != int(identity["start_ticks"]):
+        return
+    raise RuntimeError(f"{role} process instance remains after recorded exit")
+
+
+def _validate_process_exit_observation(
+    observation: Mapping[str, Any], identity: Mapping[str, Any], *, role: str
+) -> None:
+    if (
+        observation.get("role") != role
+        or observation.get("pid") != identity["pid"]
+        or observation.get("start_ticks") != identity["start_ticks"]
+        or not isinstance(observation.get("exit_observed_unix_time_ns"), int)
+        or int(observation["exit_observed_unix_time_ns"]) <= 0
+        or not isinstance(observation.get("pid_reused_at_observation"), bool)
+    ):
+        raise RuntimeError(f"stored {role} exit observation is invalid")
+    if observation["pid_reused_at_observation"]:
+        replacement = observation.get("replacement_start_ticks")
+        if not isinstance(replacement, int) or replacement == identity["start_ticks"]:
+            raise RuntimeError(f"stored {role} PID-reuse observation is invalid")
+    elif "replacement_start_ticks" in observation:
+        raise RuntimeError(f"stored {role} exit observation has unexpected replacement")
 
 
 def _signal_attempt_paths(execution_root: Path) -> list[Path]:
@@ -845,6 +1091,415 @@ def _dispatch_serial_interrupt(
     }
     _write_json_exclusive(dispatched_path, dispatch)
     return _complete_dispatched_interrupt(args, identities, dispatched_path)
+
+
+def _validate_original_sigint_attempt(
+    args: argparse.Namespace,
+    context: Mapping[str, Any],
+) -> dict[str, Any]:
+    execution_root = args.execution_root.resolve()
+    intent_path = execution_root / "cutover-intent.json"
+    boundary_path = execution_root / "boundary-observed.json"
+    signal_intent_path = execution_root / "signal-attempts" / "attempt-0001-intent.json"
+    dispatched_path = (
+        execution_root / "signal-attempts" / "attempt-0001-dispatched.json"
+    )
+    intent = _strict_json(intent_path)
+    boundary = _strict_json(boundary_path)
+    signal_intent = _strict_json(signal_intent_path)
+    dispatched = _strict_json(dispatched_path)
+    expected_control = {
+        "control_checkout": str(args.control_repo.resolve()),
+        "control_head": ORIGINAL_CONTROL_HEAD,
+        "implementation_commit": ORIGINAL_IMPLEMENTATION_COMMIT,
+        "amendment_commit": AMENDMENT_COMMIT,
+        "script_sha256": ORIGINAL_SCRIPT_SHA256,
+    }
+    if intent.get("kind") != f"{KIND}_cutover_intent":
+        raise RuntimeError("original cutover intent kind drifted")
+    if intent.get("control") != expected_control:
+        raise RuntimeError("original cutover control provenance drifted")
+    if intent.get("locked_test_accessed") is not False:
+        raise RuntimeError("original cutover intent lacks Locked-Test exclusion")
+    identities = intent.get("serial_identities")
+    if not isinstance(identities, Mapping):
+        raise RuntimeError("original cutover identities are malformed")
+    if boundary.get("serial_python_identity") != identities.get("python"):
+        raise RuntimeError("original boundary identity differs from cutover intent")
+    baseline = boundary.get("baseline_inventory")
+    if not isinstance(baseline, Mapping):
+        raise RuntimeError("original boundary baseline is malformed")
+    if baseline != intent.get("initial_inventory"):
+        raise RuntimeError("original boundary baseline differs from cutover intent")
+    boundary_line = boundary.get("boundary_line")
+    if not isinstance(boundary_line, Mapping):
+        raise RuntimeError("original boundary line is malformed")
+    _prevalidate_boundary_line(boundary_line, baseline, context["ordered_ids"])
+    if (
+        signal_intent.get("kind") != f"{KIND}_signal_intent"
+        or signal_intent.get("signal") != "SIGINT"
+        or signal_intent.get("signal_count") != 1
+        or signal_intent.get("serial_python_identity") != identities.get("python")
+        or signal_intent.get("serial_flock_identity") != identities.get("flock_wrapper")
+        or Path(str(signal_intent.get("boundary_receipt_path"))).resolve()
+        != boundary_path
+        or signal_intent.get("boundary_receipt_sha256") != _sha256_file(boundary_path)
+    ):
+        raise RuntimeError("original SIGINT intent is invalid")
+    if (
+        dispatched.get("kind") != f"{KIND}_signal_dispatched"
+        or dispatched.get("signal") != "SIGINT"
+        or dispatched.get("signal_count") != 1
+        or dispatched.get("serial_python_identity") != identities.get("python")
+        or dispatched.get("intent_sha256") != _sha256_file(signal_intent_path)
+        or dispatched.get("os_kill_returned") is not True
+        or dispatched.get("locked_test_accessed") is not False
+    ):
+        raise RuntimeError("original SIGINT dispatch is invalid")
+    if (execution_root / "serial-interrupt.json").exists():
+        raise RuntimeError("unexpected original serial-interrupt receipt exists")
+    if (execution_root / "plan.json").exists():
+        raise RuntimeError("unexpected continuation plan exists before recovery")
+    return {
+        "cutover_intent": intent,
+        "cutover_intent_path": intent_path,
+        "boundary": boundary,
+        "boundary_path": boundary_path,
+        "signal_intent": signal_intent,
+        "signal_intent_path": signal_intent_path,
+        "signal_dispatched": dispatched,
+        "signal_dispatched_path": dispatched_path,
+        "serial_identities": identities,
+    }
+
+
+def _ensure_original_sigint_ineffective_receipt(
+    args: argparse.Namespace,
+    original: Mapping[str, Any],
+) -> dict[str, Any]:
+    path = args.execution_root.resolve() / "signal-attempts" / "attempt-0001-ineffective.json"
+    dispatched_path = Path(original["signal_dispatched_path"])
+    expected_dispatch_sha = _sha256_file(dispatched_path)
+    if path.exists():
+        receipt = _strict_json(path)
+        status = receipt.get("signal_status")
+        observed_ns = receipt.get("observed_unix_time_ns")
+        dispatched_ns = int(original["signal_dispatched"]["dispatched_unix_time_ns"])
+        if (
+            receipt.get("kind") != f"{KIND}_signal_ineffective"
+            or receipt.get("signal") != "SIGINT"
+            or receipt.get("signal_count") != 1
+            or receipt.get("signal_dispatched_sha256") != expected_dispatch_sha
+            or receipt.get("serial_python_identity")
+            != original["serial_identities"]["python"]
+            or receipt.get("serial_flock_identity")
+            != original["serial_identities"]["flock_wrapper"]
+            or receipt.get("exit_observed") is not False
+            or receipt.get("disposition") != "inherited_ignored"
+            or receipt.get("processes_alive_after_timeout") is not True
+            or receipt.get("timeout_seconds") != ORIGINAL_EXIT_TIMEOUT_SECONDS
+            or not isinstance(observed_ns, int)
+            or observed_ns - dispatched_ns
+            < int(ORIGINAL_EXIT_TIMEOUT_SECONDS * 1e9)
+            or receipt.get("causal_exit_claim") is not False
+            or receipt.get("locked_test_accessed") is not False
+            or not isinstance(status, Mapping)
+            or not isinstance(status.get("proc_status"), Mapping)
+        ):
+            raise RuntimeError("existing ineffective-SIGINT receipt is invalid")
+        _validate_recovery_signal_status(status["proc_status"])
+        return receipt
+    identities = original["serial_identities"]
+    status = _capture_recovery_signal_status(identities["python"])
+    if not _identity_matches(identities["flock_wrapper"]):
+        raise RuntimeError("flock identity changed before SIGINT closure")
+    dispatched_ns = int(original["signal_dispatched"]["dispatched_unix_time_ns"])
+    observed_ns = time.time_ns()
+    if observed_ns - dispatched_ns < int(ORIGINAL_EXIT_TIMEOUT_SECONDS * 1e9):
+        raise RuntimeError("original SIGINT timeout has not elapsed")
+    receipt = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": f"{KIND}_signal_ineffective",
+        "signal": "SIGINT",
+        "signal_count": 1,
+        "signal_dispatched_sha256": expected_dispatch_sha,
+        "serial_python_identity": identities["python"],
+        "serial_flock_identity": identities["flock_wrapper"],
+        "disposition": "inherited_ignored",
+        "signal_status": status,
+        "exit_observed": False,
+        "processes_alive_after_timeout": True,
+        "timeout_seconds": ORIGINAL_EXIT_TIMEOUT_SECONDS,
+        "observed_unix_time_ns": observed_ns,
+        "causal_exit_claim": False,
+        "locked_test_accessed": False,
+    }
+    _write_json_exclusive(path, receipt)
+    return receipt
+
+
+def _recovery_signal_paths(execution_root: Path) -> tuple[Path, Path, Path]:
+    base = execution_root / "recovery-signal-attempts"
+    return (
+        base / "attempt-0001-intent.json",
+        base / "attempt-0001-dispatched.json",
+        base / "attempt-0001-exit-observed.json",
+    )
+
+
+def _validate_recovery_sigterm_dispatch(
+    dispatched_path: Path,
+    intent_path: Path,
+    identities: Mapping[str, Any],
+) -> dict[str, Any]:
+    intent = _strict_json(intent_path)
+    dispatched = _strict_json(dispatched_path)
+    if (
+        intent.get("kind") != f"{KIND}_recovery_signal_intent"
+        or intent.get("signal") != "SIGTERM"
+        or intent.get("signal_count") != 1
+        or intent.get("target") != "serial_python_only"
+        or intent.get("delivery_method") != "libc_pidfd_send_signal"
+        or intent.get("target_start_ticks") != identities["python"]["start_ticks"]
+        or intent.get("wrapper_signalled") is not False
+        or intent.get("serial_python_identity") != identities["python"]
+        or intent.get("serial_flock_identity") != identities["flock_wrapper"]
+        or intent.get("locked_test_accessed") is not False
+    ):
+        raise RuntimeError("recovery SIGTERM intent is invalid")
+    signal_status = intent.get("signal_status")
+    if not isinstance(signal_status, Mapping) or not isinstance(
+        signal_status.get("proc_status"), Mapping
+    ):
+        raise RuntimeError("recovery SIGTERM intent signal status is malformed")
+    _validate_recovery_signal_status(signal_status["proc_status"])
+    if (
+        dispatched.get("kind") != f"{KIND}_recovery_signal_dispatched"
+        or dispatched.get("signal") != "SIGTERM"
+        or dispatched.get("signal_count") != 1
+        or dispatched.get("target_pid") != identities["python"]["pid"]
+        or dispatched.get("target_start_ticks")
+        != identities["python"]["start_ticks"]
+        or dispatched.get("wrapper_signalled") is not False
+        or dispatched.get("delivery_method") != "libc_pidfd_send_signal"
+        or dispatched.get("intent_sha256") != _sha256_file(intent_path)
+        or dispatched.get("os_kill_called") is not False
+        or dispatched.get("pidfd_send_signal_returned") is not True
+        or dispatched.get("locked_test_accessed") is not False
+    ):
+        raise RuntimeError("recovery SIGTERM dispatch is invalid")
+    return dispatched
+
+
+def _ensure_recovery_sigterm_dispatched(
+    args: argparse.Namespace,
+    identities: Mapping[str, Any],
+    boundary_path: Path,
+    ineffective_path: Path,
+    runner_sha256: str,
+) -> dict[str, Any]:
+    intent_path, dispatched_path, _exit_path = _recovery_signal_paths(
+        args.execution_root.resolve()
+    )
+    attempts_root = intent_path.parent
+    if attempts_root.exists() or attempts_root.is_symlink():
+        if attempts_root.is_symlink() or not attempts_root.is_dir():
+            raise RuntimeError("recovery signal-attempts path is not a real directory")
+    else:
+        _assert_execution_control_state(
+            args.execution_root.resolve(), "recovery_boundary"
+        )
+        attempts_root.mkdir(exist_ok=False)
+    _fsync_directory(args.execution_root.resolve())
+    if dispatched_path.exists():
+        if (args.execution_root.resolve() / "cutover-receipt.json").exists():
+            phase = "cutover"
+        elif _exit_path.exists():
+            phase = "recovery_exit"
+        else:
+            phase = "recovery_dispatched"
+        _assert_execution_control_state(args.execution_root.resolve(), phase)
+        dispatched = _validate_recovery_sigterm_dispatch(
+            dispatched_path, intent_path, identities
+        )
+        intent = _strict_json(intent_path)
+        if (
+            intent.get("runner_sha256") != runner_sha256
+            or Path(str(intent.get("boundary_receipt_path"))).resolve()
+            != boundary_path.resolve()
+            or intent.get("boundary_receipt_sha256") != _sha256_file(boundary_path)
+            or intent.get("ineffective_sigint_receipt_sha256")
+            != _sha256_file(ineffective_path)
+        ):
+            raise RuntimeError("existing recovery signal intent provenance differs")
+        return dispatched
+    if intent_path.exists():
+        raise RuntimeError(
+            "ambiguous recovery signal state: durable intent exists without dispatch"
+        )
+    _assert_execution_control_state(
+        args.execution_root.resolve(), "recovery_attempts_empty"
+    )
+    if not _identity_matches(identities["python"]):
+        raise RuntimeError("serial Python identity changed before recovery intent")
+    if not _identity_matches(identities["flock_wrapper"]):
+        raise RuntimeError("serial flock identity changed before recovery intent")
+    pidfd = _open_validated_pidfd(identities["python"])
+    try:
+        status = _capture_recovery_signal_status(identities["python"])
+        if _sha256_file(args.serial_runner.resolve()) != runner_sha256:
+            raise RuntimeError("serial runner changed before recovery intent")
+        intent = {
+            "schema_version": SCHEMA_VERSION,
+            "kind": f"{KIND}_recovery_signal_intent",
+            "signal": "SIGTERM",
+            "signal_count": 1,
+            "target": "serial_python_only",
+            "target_start_ticks": identities["python"]["start_ticks"],
+            "delivery_method": "libc_pidfd_send_signal",
+            "wrapper_signalled": False,
+            "serial_python_identity": identities["python"],
+            "serial_flock_identity": identities["flock_wrapper"],
+            "runner_sha256": runner_sha256,
+            "boundary_receipt_path": str(boundary_path.resolve()),
+            "boundary_receipt_sha256": _sha256_file(boundary_path),
+            "ineffective_sigint_receipt_sha256": _sha256_file(ineffective_path),
+            "signal_status": status,
+            "created_unix_time_ns": time.time_ns(),
+            "locked_test_accessed": False,
+        }
+        _write_json_exclusive(intent_path, intent)
+        if not _identity_matches(identities["python"]):
+            raise RuntimeError("serial Python identity changed after recovery intent")
+        if not _identity_matches(identities["flock_wrapper"]):
+            raise RuntimeError("serial flock identity changed after recovery intent")
+        if _capture_recovery_signal_status(identities["python"]) != status:
+            raise RuntimeError("signal disposition changed after recovery intent")
+        if _sha256_file(args.serial_runner.resolve()) != runner_sha256:
+            raise RuntimeError("serial runner changed after recovery intent")
+        _pidfd_send_signal_linux(pidfd, int(signal.SIGTERM))
+        dispatched = {
+            "schema_version": SCHEMA_VERSION,
+            "kind": f"{KIND}_recovery_signal_dispatched",
+            "signal": "SIGTERM",
+            "signal_count": 1,
+            "target_pid": identities["python"]["pid"],
+            "target_start_ticks": identities["python"]["start_ticks"],
+            "target": "serial_python_only",
+            "delivery_method": "libc_pidfd_send_signal",
+            "wrapper_signalled": False,
+            "intent_sha256": _sha256_file(intent_path),
+            "os_kill_called": False,
+            "pidfd_send_signal_returned": True,
+            "dispatched_unix_time_ns": time.time_ns(),
+            "locked_test_accessed": False,
+        }
+        _write_json_exclusive(dispatched_path, dispatched)
+        _assert_execution_control_state(
+            args.execution_root.resolve(), "recovery_dispatched"
+        )
+        return dispatched
+    finally:
+        os.close(pidfd)
+
+
+def _complete_recovery_sigterm(
+    args: argparse.Namespace,
+    identities: Mapping[str, Any],
+) -> dict[str, Any]:
+    intent_path, dispatched_path, exit_path = _recovery_signal_paths(
+        args.execution_root.resolve()
+    )
+    dispatched = _validate_recovery_sigterm_dispatch(
+        dispatched_path, intent_path, identities
+    )
+    if exit_path.exists():
+        phase = (
+            "cutover"
+            if (args.execution_root.resolve() / "cutover-receipt.json").exists()
+            else "recovery_exit"
+        )
+        _assert_execution_control_state(args.execution_root.resolve(), phase)
+        existing = _strict_json(exit_path)
+        python_observation = existing.get("python_exit_observation")
+        wrapper_observation = existing.get("wrapper_exit_observation")
+        if (
+            existing.get("kind") != f"{KIND}_recovery_signal_exit_observed"
+            or existing.get("signal") != "SIGTERM"
+            or existing.get("signal_count") != 1
+            or existing.get("signal_dispatched_sha256")
+            != _sha256_file(dispatched_path)
+            or existing.get("serial_python_identity") != identities["python"]
+            or existing.get("serial_flock_identity") != identities["flock_wrapper"]
+            or existing.get("python_exit_subsequently_observed") is not True
+            or existing.get("wrapper_exit_subsequently_observed") is not True
+            or existing.get("wrapper_signalled_by_recovery") is not False
+            or existing.get("runner_process_count") != 0
+            or existing.get("causal_exit_claim") is not False
+            or existing.get("wrapper_natural_exit_causal_claim") is not False
+            or existing.get("locked_test_accessed") is not False
+            or not isinstance(python_observation, Mapping)
+            or not isinstance(wrapper_observation, Mapping)
+        ):
+            raise RuntimeError("existing recovery exit receipt is invalid")
+        _validate_process_exit_observation(
+            python_observation, identities["python"], role="serial_python"
+        )
+        _validate_process_exit_observation(
+            wrapper_observation,
+            identities["flock_wrapper"],
+            role="serial_flock_wrapper",
+        )
+        dispatched_ns = int(dispatched["dispatched_unix_time_ns"])
+        python_ns = int(python_observation["exit_observed_unix_time_ns"])
+        wrapper_ns = int(wrapper_observation["exit_observed_unix_time_ns"])
+        if not (dispatched_ns <= python_ns <= wrapper_ns):
+            raise RuntimeError("stored recovery exit observations are not monotonic")
+        _assert_process_instance_absent(identities["python"], role="serial_python")
+        _assert_process_instance_absent(
+            identities["flock_wrapper"], role="serial_flock_wrapper"
+        )
+        if _runner_processes(args.serial_runner):
+            raise RuntimeError("serial scorer reappeared after recovery exit receipt")
+        return existing
+    _assert_execution_control_state(
+        args.execution_root.resolve(), "recovery_dispatched"
+    )
+    deadline = time.monotonic() + args.serial_exit_timeout
+    python_exit = _wait_process_instance_exit(
+        identities["python"],
+        timeout_seconds=max(0.001, deadline - time.monotonic()),
+        role="serial_python",
+    )
+    wrapper_exit = _wait_process_instance_exit(
+        identities["flock_wrapper"],
+        timeout_seconds=max(0.001, deadline - time.monotonic()),
+        role="serial_flock_wrapper",
+    )
+    if _runner_processes(args.serial_runner):
+        raise RuntimeError("serial scorer remains after recovery SIGTERM")
+    receipt = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": f"{KIND}_recovery_signal_exit_observed",
+        "signal": "SIGTERM",
+        "signal_count": 1,
+        "signal_dispatched_sha256": _sha256_file(dispatched_path),
+        "serial_python_identity": identities["python"],
+        "serial_flock_identity": identities["flock_wrapper"],
+        "python_exit_subsequently_observed": True,
+        "python_exit_observation": python_exit,
+        "wrapper_exit_subsequently_observed": True,
+        "wrapper_exit_observation": wrapper_exit,
+        "wrapper_signalled_by_recovery": False,
+        "runner_process_count": 0,
+        "causal_exit_claim": False,
+        "wrapper_natural_exit_causal_claim": False,
+        "observed_unix_time_ns": time.time_ns(),
+        "locked_test_accessed": False,
+    }
+    _write_json_exclusive(exit_path, receipt)
+    _assert_execution_control_state(args.execution_root.resolve(), "recovery_exit")
+    return receipt
 
 
 def _acquire_lock(path: Path) -> int:
@@ -1265,7 +1920,6 @@ def _worker_main(args: argparse.Namespace) -> int:
         from mech_int_vla.provenance import content_links_for
         from mech_int_vla.scoring import (
             FROZEN_TRANSFORMS,
-            load_scoring_sidecar,
             score_replay_to_sidecar,
         )
         from mech_int_vla.scoring_runtime import (
@@ -2078,9 +2732,7 @@ def _cutover_main(args: argparse.Namespace) -> int:
     }
     boundary_path = args.execution_root / "boundary-observed.json"
     _write_json_exclusive(boundary_path, boundary_observed)
-    interrupt_receipt = _dispatch_serial_interrupt(
-        args, identities, boundary_path
-    )
+    _dispatch_serial_interrupt(args, identities, boundary_path)
     lock_descriptor = _acquire_lock(args.global_lock.resolve())
     try:
         frozen = _inventory(context, args)
@@ -2137,6 +2789,612 @@ def _cutover_main(args: argparse.Namespace) -> int:
         # See cutover: inherited child descriptors must retain the flock if the
         # coordinator exits before a writer.
         os.close(lock_descriptor)
+
+
+def _assert_inventory_is_manifest_prefix(
+    inventory: Mapping[str, Any], ordered_ids: Sequence[str]
+) -> None:
+    count = int(inventory["episode_count"])
+    if list(inventory["episode_ids"]) != list(ordered_ids[:count]):
+        raise RuntimeError("serial inventory is not an exact manifest prefix")
+    if count != len(_records_by_id(inventory)):
+        raise RuntimeError("serial inventory count differs from its records")
+
+
+def _assert_two_worker_capacity_after_boundary(
+    inventory: Mapping[str, Any], ordered_ids: Sequence[str]
+) -> None:
+    count = int(inventory["episode_count"])
+    remaining = len(ordered_ids) - (count + 1)
+    if remaining < 2:
+        raise RuntimeError(
+            "fewer than two continuation episodes would remain after fresh boundary"
+        )
+
+
+def _assert_original_boundary_retained(
+    original: Mapping[str, Any], inventory: Mapping[str, Any]
+) -> None:
+    baseline = original["boundary"]["baseline_inventory"]
+    _assert_frozen_unchanged(baseline, inventory)
+    line = original["boundary"]["boundary_line"]
+    records = _records_by_id(inventory)
+    episode_id = str(line["episode_id"])
+    if episode_id not in records:
+        raise RuntimeError("original boundary sidecar disappeared")
+    if records[episode_id]["combined_sha256"] != line["sha256"]:
+        raise RuntimeError("original boundary sidecar hash changed")
+
+
+def _validate_recovery_intent(
+    args: argparse.Namespace,
+    context: Mapping[str, Any],
+    control: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+    original: Mapping[str, Any],
+    ineffective_path: Path,
+) -> dict[str, Any]:
+    path = args.execution_root.resolve() / "recovery-cutover-intent.json"
+    receipt = _strict_json(path)
+    if (
+        receipt.get("kind") != f"{KIND}_ignored_sigint_recovery_intent"
+        or receipt.get("control") != dict(control)
+        or receipt.get("evidence") != dict(evidence)
+        or receipt.get("serial_identities") != original["serial_identities"]
+        or receipt.get("original_cutover_intent_sha256")
+        != _sha256_file(Path(original["cutover_intent_path"]))
+        or receipt.get("original_boundary_sha256")
+        != _sha256_file(Path(original["boundary_path"]))
+        or receipt.get("original_signal_intent_sha256")
+        != _sha256_file(Path(original["signal_intent_path"]))
+        or receipt.get("original_signal_dispatched_sha256")
+        != _sha256_file(Path(original["signal_dispatched_path"]))
+        or receipt.get("original_signal_ineffective_sha256")
+        != _sha256_file(ineffective_path)
+        or receipt.get("locked_test_accessed") is not False
+    ):
+        raise RuntimeError("recovery cutover intent provenance is invalid")
+    baseline = receipt.get("baseline_inventory")
+    if not isinstance(baseline, Mapping):
+        raise RuntimeError("recovery baseline inventory is malformed")
+    _assert_inventory_is_manifest_prefix(baseline, context["ordered_ids"])
+    _assert_two_worker_capacity_after_boundary(baseline, context["ordered_ids"])
+    _assert_original_boundary_retained(original, baseline)
+    log_identity = receipt.get("serial_log_identity")
+    if not isinstance(log_identity, Mapping):
+        raise RuntimeError("recovery serial-log identity is malformed")
+    observed_log = _assert_same_log_object(log_identity, Path(log_identity["path"]))
+    offset = int(receipt["serial_log_offset"])
+    if offset != int(log_identity["size_bytes"]) or observed_log["size_bytes"] < offset:
+        raise RuntimeError("recovery serial-log offset is inconsistent")
+    status = receipt.get("signal_status")
+    if not isinstance(status, Mapping) or not isinstance(status.get("proc_status"), Mapping):
+        raise RuntimeError("recovery baseline signal status is malformed")
+    _validate_recovery_signal_status(status["proc_status"])
+    if receipt.get("serial_runner_sha256") != _sha256_file(args.serial_runner.resolve()):
+        raise RuntimeError("serial runner differs from recovery intent")
+    return receipt
+
+
+def _create_recovery_intent(
+    args: argparse.Namespace,
+    context: Mapping[str, Any],
+    control: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+    original: Mapping[str, Any],
+    ineffective_path: Path,
+) -> dict[str, Any]:
+    identities = original["serial_identities"]
+    if not _identity_matches(identities["python"]):
+        raise RuntimeError("serial Python identity changed before recovery baseline")
+    if not _identity_matches(identities["flock_wrapper"]):
+        raise RuntimeError("serial flock identity changed before recovery baseline")
+    log_path = args.serial_log.resolve()
+    if log_path != Path(original["cutover_intent"]["serial_log"]).resolve():
+        raise RuntimeError("recovery serial log differs from original intent")
+    baseline, offset = _stable_inventory_log_baseline(
+        context, args, log_path, identities["python"]
+    )
+    _assert_inventory_is_manifest_prefix(baseline, context["ordered_ids"])
+    _assert_two_worker_capacity_after_boundary(baseline, context["ordered_ids"])
+    _assert_original_boundary_retained(original, baseline)
+    log_identity = _log_identity(log_path)
+    if log_identity["size_bytes"] != offset:
+        raise RuntimeError("serial log advanced while creating recovery intent")
+    runner_sha = _sha256_file(args.serial_runner.resolve())
+    status = _capture_recovery_signal_status(identities["python"])
+    count = int(baseline["episode_count"])
+    potentially_started = (
+        context["ordered_ids"][count] if count < len(context["ordered_ids"]) else None
+    )
+    receipt = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": f"{KIND}_ignored_sigint_recovery_intent",
+        "created_unix_time_ns": time.time_ns(),
+        "control": dict(control),
+        "evidence": dict(evidence),
+        "serial_identities": identities,
+        "serial_runner_sha256": runner_sha,
+        "serial_log_identity": log_identity,
+        "serial_log_offset": offset,
+        "baseline_inventory": baseline,
+        "original_cutover_intent_sha256": _sha256_file(
+            Path(original["cutover_intent_path"])
+        ),
+        "original_boundary_sha256": _sha256_file(Path(original["boundary_path"])),
+        "original_signal_intent_sha256": _sha256_file(
+            Path(original["signal_intent_path"])
+        ),
+        "original_signal_dispatched_sha256": _sha256_file(
+            Path(original["signal_dispatched_path"])
+        ),
+        "original_signal_ineffective_sha256": _sha256_file(ineffective_path),
+        "signal_status": status,
+        "next_manifest_episode_potentially_in_memory": potentially_started,
+        "locked_test_accessed": False,
+    }
+    _write_json_exclusive(
+        args.execution_root.resolve() / "recovery-cutover-intent.json", receipt
+    )
+    return receipt
+
+
+def _validate_logged_recovery_boundary(
+    args: argparse.Namespace,
+    context: Mapping[str, Any],
+    recovery_intent: Mapping[str, Any],
+) -> tuple[dict[str, Any], Path]:
+    path = args.execution_root.resolve() / "recovery-boundary-observed.json"
+    receipt = _strict_json(path)
+    log_identity = recovery_intent["serial_log_identity"]
+    log_path = Path(log_identity["path"])
+    _assert_same_log_object(log_identity, log_path)
+    record = receipt.get("log_record")
+    if not isinstance(record, Mapping):
+        raise RuntimeError("recovery boundary log record is malformed")
+    start = int(record["log_start_offset"])
+    end = int(record["log_end_offset"])
+    if start < int(recovery_intent["serial_log_offset"]) or end <= start:
+        raise RuntimeError("recovery boundary offsets are invalid")
+    with log_path.open("rb") as stream:
+        stream.seek(start)
+        payload = stream.read(end - start)
+    if not payload.endswith(b"\n"):
+        raise RuntimeError("recovery boundary log record lacks newline")
+    raw = payload[:-1]
+    if _sha256_bytes(raw) != record.get("raw_line_sha256"):
+        raise RuntimeError("recovery boundary raw log hash differs")
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("recovery boundary log record is not JSON") from exc
+    if parsed != record.get("boundary_line"):
+        raise RuntimeError("recovery boundary parsed line differs from log")
+    if (
+        receipt.get("kind") != f"{KIND}_ignored_sigint_recovery_boundary"
+        or receipt.get("recovery_intent_sha256")
+        != _sha256_file(args.execution_root.resolve() / "recovery-cutover-intent.json")
+        or receipt.get("baseline_inventory") != recovery_intent["baseline_inventory"]
+        or receipt.get("serial_python_identity")
+        != recovery_intent["serial_identities"]["python"]
+        or receipt.get("serial_log_identity") != log_identity
+        or receipt.get("locked_test_accessed") is not False
+    ):
+        raise RuntimeError("recovery boundary receipt provenance is invalid")
+    _prevalidate_boundary_line(
+        record["boundary_line"],
+        recovery_intent["baseline_inventory"],
+        context["ordered_ids"],
+    )
+    return receipt, path
+
+
+def _observe_recovery_boundary(
+    args: argparse.Namespace,
+    context: Mapping[str, Any],
+    recovery_intent: Mapping[str, Any],
+) -> tuple[dict[str, Any], Path]:
+    path = args.execution_root.resolve() / "recovery-boundary-observed.json"
+    if path.exists():
+        return _validate_logged_recovery_boundary(args, context, recovery_intent)
+    identities = recovery_intent["serial_identities"]
+    if not _identity_matches(identities["python"]):
+        raise RuntimeError("serial Python identity changed before recovery boundary")
+    if not _identity_matches(identities["flock_wrapper"]):
+        raise RuntimeError("serial flock identity changed before recovery boundary")
+    log_identity = recovery_intent["serial_log_identity"]
+    log_path = Path(log_identity["path"])
+    _assert_same_log_object(log_identity, log_path)
+    record = _wait_for_score_completed_record(
+        log_path,
+        int(recovery_intent["serial_log_offset"]),
+        identities["python"],
+        timeout_seconds=args.boundary_timeout,
+    )
+    _prevalidate_boundary_line(
+        record["boundary_line"],
+        recovery_intent["baseline_inventory"],
+        context["ordered_ids"],
+    )
+    if not _identity_matches(identities["python"]):
+        raise RuntimeError("serial Python identity changed at recovery boundary")
+    if not _identity_matches(identities["flock_wrapper"]):
+        raise RuntimeError("serial flock identity changed at recovery boundary")
+    _capture_recovery_signal_status(identities["python"])
+    _assert_same_log_object(log_identity, log_path)
+    count = int(record["boundary_line"]["completed"])
+    abandoned = (
+        context["ordered_ids"][count] if count < len(context["ordered_ids"]) else None
+    )
+    receipt = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": f"{KIND}_ignored_sigint_recovery_boundary",
+        "observed_unix_time_ns": time.time_ns(),
+        "recovery_intent_sha256": _sha256_file(
+            args.execution_root.resolve() / "recovery-cutover-intent.json"
+        ),
+        "serial_python_identity": identities["python"],
+        "serial_flock_identity": identities["flock_wrapper"],
+        "serial_log_identity": log_identity,
+        "baseline_inventory": recovery_intent["baseline_inventory"],
+        "log_record": record,
+        "potentially_started_abandoned_episode_id": abandoned,
+        "abandoned_computation_authoritative": False,
+        "abandoned_computation_cost_status": "unavailable",
+        "locked_test_accessed": False,
+    }
+    _write_json_exclusive(path, receipt)
+    return _validate_logged_recovery_boundary(args, context, recovery_intent)
+
+
+def _assert_no_cutover_residue(args: argparse.Namespace) -> None:
+    feature_root = args.feature_root.resolve()
+    if feature_root.is_symlink():
+        raise RuntimeError("feature root may not be a symlink")
+    if feature_root.exists() and (
+        not feature_root.is_dir() or any(feature_root.iterdir())
+    ):
+        raise RuntimeError("feature root is not empty after serial termination")
+    forbidden: list[str] = []
+    for root in (args.score_root.resolve(), args.execution_root.resolve()):
+        if not root.exists() or root.is_symlink() or not root.is_dir():
+            raise RuntimeError(f"cutover root is not a real directory: {root}")
+        for entry in root.rglob("*"):
+            name = entry.name
+            if (
+                name.startswith(".tmp-")
+                or name == ".publish.lock"
+                or name.endswith(".staging")
+                or name.startswith("staging-")
+                or name == "finalizer-staging"
+            ):
+                forbidden.append(str(entry))
+    if forbidden:
+        raise RuntimeError(f"cutover residue remains: {sorted(forbidden)}")
+
+
+def _assert_execution_control_state(execution_root: Path, phase: str) -> None:
+    base_files = {"cutover-intent.json", "boundary-observed.json"}
+    base_directories = {"signal-attempts"}
+    phase_files = {
+        "original_dispatched": set(),
+        "sigint_closed": set(),
+        "recovery_intent": {"recovery-cutover-intent.json"},
+        "recovery_boundary": {
+            "recovery-cutover-intent.json",
+            "recovery-boundary-observed.json",
+        },
+        "recovery_attempts_empty": {
+            "recovery-cutover-intent.json",
+            "recovery-boundary-observed.json",
+        },
+        "recovery_dispatched": {
+            "recovery-cutover-intent.json",
+            "recovery-boundary-observed.json",
+        },
+        "recovery_exit": {
+            "recovery-cutover-intent.json",
+            "recovery-boundary-observed.json",
+        },
+        "cutover": {
+            "recovery-cutover-intent.json",
+            "recovery-boundary-observed.json",
+            "cutover-receipt.json",
+        },
+    }
+    if phase not in phase_files:
+        raise RuntimeError(f"unknown recovery control phase: {phase}")
+    recovery_directory_phases = {
+        "recovery_attempts_empty",
+        "recovery_dispatched",
+        "recovery_exit",
+        "cutover",
+    }
+    expected_files = base_files | phase_files[phase]
+    expected_directories = set(base_directories)
+    if phase in recovery_directory_phases:
+        expected_directories.add("recovery-signal-attempts")
+    expected_names = expected_files | expected_directories
+    if execution_root.is_symlink() or not execution_root.is_dir():
+        raise RuntimeError("execution control root is not a real directory")
+    entries = {entry.name: entry for entry in execution_root.iterdir()}
+    if set(entries) != expected_names:
+        raise RuntimeError(
+            f"unexpected execution control entries for {phase}: "
+            f"{sorted(set(entries) ^ expected_names)}"
+        )
+    for name in expected_files:
+        entry = entries[name]
+        if entry.is_symlink() or not entry.is_file():
+            raise RuntimeError(f"execution control file is not regular: {entry}")
+    for name in expected_directories:
+        entry = entries[name]
+        if entry.is_symlink() or not entry.is_dir():
+            raise RuntimeError(f"execution control directory is not real: {entry}")
+    original_names = {
+        "attempt-0001-intent.json",
+        "attempt-0001-dispatched.json",
+    }
+    if phase != "original_dispatched":
+        original_names.add("attempt-0001-ineffective.json")
+    original_entries = {
+        entry.name: entry for entry in (execution_root / "signal-attempts").iterdir()
+    }
+    if set(original_entries) != original_names:
+        raise RuntimeError(
+            "unexpected original signal-attempt entries: "
+            f"{sorted(set(original_entries) ^ original_names)}"
+        )
+    for entry in original_entries.values():
+        if entry.is_symlink() or not entry.is_file():
+            raise RuntimeError(f"original signal receipt is not regular: {entry}")
+    if phase in recovery_directory_phases:
+        recovery_names_by_phase = {
+            "recovery_attempts_empty": set(),
+            "recovery_dispatched": {
+                "attempt-0001-intent.json",
+                "attempt-0001-dispatched.json",
+            },
+            "recovery_exit": {
+                "attempt-0001-intent.json",
+                "attempt-0001-dispatched.json",
+                "attempt-0001-exit-observed.json",
+            },
+            "cutover": {
+                "attempt-0001-intent.json",
+                "attempt-0001-dispatched.json",
+                "attempt-0001-exit-observed.json",
+            },
+        }
+        recovery_entries = {
+            entry.name: entry
+            for entry in (execution_root / "recovery-signal-attempts").iterdir()
+        }
+        expected_recovery_names = recovery_names_by_phase[phase]
+        if set(recovery_entries) != expected_recovery_names:
+            raise RuntimeError(
+                "unexpected recovery signal-attempt entries: "
+                f"{sorted(set(recovery_entries) ^ expected_recovery_names)}"
+            )
+        for entry in recovery_entries.values():
+            if entry.is_symlink() or not entry.is_file():
+                raise RuntimeError(f"recovery signal receipt is not regular: {entry}")
+
+
+def _recover_ignored_sigint_main(args: argparse.Namespace) -> int:
+    script = Path(__file__).resolve()
+    control = _require_control_checkout(
+        args.control_repo.resolve(), script, args.expected_implementation_commit
+    )
+    context = _locked_context(args, validate_all_raw=True)
+    evidence = _validate_evidence(args)
+    _validate_paths(args)
+    execution_root = args.execution_root.resolve()
+    if execution_root.is_symlink() or not execution_root.is_dir():
+        raise RuntimeError("existing execution root is not a real directory")
+    recovery_intent_path = execution_root / "recovery-cutover-intent.json"
+    plan_path = execution_root / "plan.json"
+    if plan_path.exists():
+        if _runner_processes(args.serial_runner):
+            raise RuntimeError("serial runner exists after recovery plan creation")
+        lock_descriptor = _acquire_lock(args.global_lock.resolve())
+        try:
+            plan, plan_sha = _load_plan(args)
+            _assert_arguments_match_plan(args, plan, plan_sha)
+            return _run_plan(args, context, plan, plan_sha, lock_descriptor)
+        finally:
+            os.close(lock_descriptor)
+    if not recovery_intent_path.exists():
+        initial_phase = (
+            "sigint_closed"
+            if (execution_root / "signal-attempts" / "attempt-0001-ineffective.json").exists()
+            else "original_dispatched"
+        )
+        _assert_execution_control_state(execution_root, initial_phase)
+        for relative in (
+            "cutover-receipt.json",
+            "runtime.json",
+            "execution-receipt.json",
+            "completion.json",
+            "failure.json",
+            "worker0",
+            "worker1",
+        ):
+            candidate = execution_root / relative
+            if candidate.exists() or candidate.is_symlink():
+                raise RuntimeError(
+                    f"unexpected pre-recovery control path exists: {candidate}"
+                )
+    original = _validate_original_sigint_attempt(args, context)
+    ineffective_path = execution_root / "signal-attempts" / "attempt-0001-ineffective.json"
+    _ensure_original_sigint_ineffective_receipt(args, original)
+    if recovery_intent_path.exists():
+        recovery_intent = _validate_recovery_intent(
+            args, context, control, evidence, original, ineffective_path
+        )
+    else:
+        _assert_execution_control_state(execution_root, "sigint_closed")
+        recovery_intent = _create_recovery_intent(
+            args, context, control, evidence, original, ineffective_path
+        )
+        _assert_execution_control_state(execution_root, "recovery_intent")
+    boundary, boundary_path = _observe_recovery_boundary(
+        args, context, recovery_intent
+    )
+    if not (execution_root / "recovery-signal-attempts").exists():
+        _assert_execution_control_state(execution_root, "recovery_boundary")
+    identities = recovery_intent["serial_identities"]
+    _ensure_recovery_sigterm_dispatched(
+        args,
+        identities,
+        boundary_path,
+        ineffective_path,
+        str(recovery_intent["serial_runner_sha256"]),
+    )
+    exit_receipt = _complete_recovery_sigterm(args, identities)
+    _assert_execution_control_state(
+        execution_root,
+        "cutover" if (execution_root / "cutover-receipt.json").exists() else "recovery_exit",
+    )
+    lock_descriptor = _acquire_lock(args.global_lock.resolve())
+    try:
+        frozen = _inventory(context, args)
+        baseline = recovery_intent["baseline_inventory"]
+        _assert_frozen_unchanged(baseline, frozen)
+        _validate_boundary_transition(
+            boundary["log_record"]["boundary_line"],
+            baseline,
+            frozen,
+            context["ordered_ids"],
+        )
+        _assert_original_boundary_retained(original, frozen)
+        if _runner_processes(args.serial_runner):
+            raise RuntimeError("serial runner reappeared after recovery")
+        _assert_no_cutover_residue(args)
+        cutover = {
+            "schema_version": SCHEMA_VERSION,
+            "kind": f"{KIND}_cutover_receipt",
+            "serial_identities": identities,
+            "signal_sequence": [
+                {
+                    "signal": "SIGINT",
+                    "dispatched": True,
+                    "disposition": "inherited_ignored",
+                    "exit_observed": False,
+                    "receipt_sha256": _sha256_file(ineffective_path),
+                },
+                {
+                    "signal": "SIGTERM",
+                    "dispatched": True,
+                    "process_exit_subsequently_observed": True,
+                    "causal_exit_claim": False,
+                    "dispatch_sha256": _sha256_file(
+                        _recovery_signal_paths(execution_root)[1]
+                    ),
+                    "exit_observation_sha256": _sha256_file(
+                        _recovery_signal_paths(execution_root)[2]
+                    ),
+                },
+            ],
+            "signal_count": 2,
+            "original_boundary_observed_sha256": _sha256_file(
+                Path(original["boundary_path"])
+            ),
+            "recovery_boundary_observed_sha256": _sha256_file(boundary_path),
+            "recovery_intent_sha256": _sha256_file(recovery_intent_path),
+            "recovery_exit_observation_sha256": _sha256_bytes(
+                _canonical(exit_receipt)
+            ),
+            "boundary_line": boundary["log_record"]["boundary_line"],
+            "boundary_log_offset": boundary["log_record"]["log_end_offset"],
+            "original_intent_inventory_sha256": original["cutover_intent"][
+                "initial_inventory"
+            ]["inventory_sha256"],
+            "original_intent_episode_count": original["cutover_intent"][
+                "initial_inventory"
+            ]["episode_count"],
+            "recovery_baseline_inventory_sha256": baseline["inventory_sha256"],
+            "recovery_baseline_episode_count": baseline["episode_count"],
+            "frozen_inventory_sha256": frozen["inventory_sha256"],
+            "frozen_episode_count": frozen["episode_count"],
+            "global_lock_reacquired_exclusively": True,
+            "serial_processes_remaining": 0,
+            "potentially_started_abandoned_episode_id": boundary.get(
+                "potentially_started_abandoned_episode_id"
+            ),
+            "abandoned_computation_authoritative": False,
+            "abandoned_computation_cost_status": "unavailable",
+            "locked_test_accessed": False,
+        }
+        cutover_path = execution_root / "cutover-receipt.json"
+        if cutover_path.exists():
+            if _strict_json(cutover_path) != cutover:
+                raise RuntimeError("existing recovery cutover receipt differs")
+        else:
+            _write_json_exclusive(cutover_path, cutover)
+        _assert_execution_control_state(execution_root, "cutover")
+        plan, plan_sha = _create_plan(
+            args, context, control, evidence, cutover, frozen
+        )
+        return _run_plan(args, context, plan, plan_sha, lock_descriptor)
+    finally:
+        os.close(lock_descriptor)
+
+
+def _recovery_preflight_main(args: argparse.Namespace) -> int:
+    """Run the ignored-SIGINT recovery guards without writing or signalling."""
+
+    script = Path(__file__).resolve()
+    control = _require_control_checkout(
+        args.control_repo.resolve(), script, args.expected_implementation_commit
+    )
+    context = _locked_context(args, validate_all_raw=True)
+    evidence = _validate_evidence(args)
+    _validate_paths(args)
+    execution_root = args.execution_root.resolve()
+    if execution_root.is_symlink() or not execution_root.is_dir():
+        raise RuntimeError("existing execution root is not a real directory")
+    _assert_execution_control_state(execution_root, "original_dispatched")
+    original = _validate_original_sigint_attempt(args, context)
+    identities = original["serial_identities"]
+    if not _identity_matches(identities["python"]):
+        raise RuntimeError("serial Python identity differs during recovery preflight")
+    if not _identity_matches(identities["flock_wrapper"]):
+        raise RuntimeError("serial flock identity differs during recovery preflight")
+    signal_status = _capture_recovery_signal_status(identities["python"])
+    dispatched_ns = int(original["signal_dispatched"]["dispatched_unix_time_ns"])
+    elapsed = (time.time_ns() - dispatched_ns) / 1e9
+    if elapsed < ORIGINAL_EXIT_TIMEOUT_SECONDS:
+        raise RuntimeError("original SIGINT timeout has not elapsed")
+    inventory = _inventory(context, args)
+    _assert_inventory_is_manifest_prefix(inventory, context["ordered_ids"])
+    _assert_original_boundary_retained(original, inventory)
+    _assert_two_worker_capacity_after_boundary(inventory, context["ordered_ids"])
+    if args.serial_log.resolve() != Path(original["cutover_intent"]["serial_log"]).resolve():
+        raise RuntimeError("recovery serial log differs from original intent")
+    log_identity = _log_identity(args.serial_log.resolve())
+    _assert_no_cutover_residue(args)
+    receipt = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": f"{KIND}_ignored_sigint_recovery_read_only_preflight",
+        "status": "pass",
+        "control": control,
+        "evidence": evidence,
+        "serial_identities": identities,
+        "signal_status": signal_status,
+        "original_sigint_elapsed_seconds": elapsed,
+        "current_inventory_sha256": inventory["inventory_sha256"],
+        "current_episode_count": inventory["episode_count"],
+        "expected_fresh_boundary_count": int(inventory["episode_count"]) + 1,
+        "remaining_after_fresh_boundary": len(context["ordered_ids"])
+        - (int(inventory["episode_count"]) + 1),
+        "serial_log_identity": log_identity,
+        "feature_root_empty": True,
+        "recovery_paths_absent": True,
+        "locked_test_accessed": False,
+    }
+    print(json.dumps(receipt, sort_keys=True), flush=True)
+    return 0
 
 
 def _preflight_main(args: argparse.Namespace) -> int:
@@ -2441,6 +3699,24 @@ def main() -> int:
     preflight.add_argument("--benchmark-resource-samples", type=Path, required=True)
     preflight.add_argument("--serial-log", type=Path, required=True)
 
+    recovery = subparsers.add_parser("recover-ignored-sigint")
+    _common_arguments(recovery)
+    recovery.add_argument("--equivalence-audit", type=Path, required=True)
+    recovery.add_argument("--benchmark-summary", type=Path, required=True)
+    recovery.add_argument("--benchmark-resource-samples", type=Path, required=True)
+    recovery.add_argument("--serial-log", type=Path, required=True)
+    recovery.add_argument("--boundary-timeout", type=float, default=1800.0)
+    recovery.add_argument("--serial-exit-timeout", type=float, default=120.0)
+
+    recovery_preflight = subparsers.add_parser("recover-ignored-sigint-preflight")
+    _common_arguments(recovery_preflight)
+    recovery_preflight.add_argument("--equivalence-audit", type=Path, required=True)
+    recovery_preflight.add_argument("--benchmark-summary", type=Path, required=True)
+    recovery_preflight.add_argument(
+        "--benchmark-resource-samples", type=Path, required=True
+    )
+    recovery_preflight.add_argument("--serial-log", type=Path, required=True)
+
     resume = subparsers.add_parser("resume")
     _common_arguments(resume)
     resume.add_argument("--boundary-timeout", type=float, default=1800.0)
@@ -2475,6 +3751,17 @@ def main() -> int:
         if args.serial_exit_timeout <= 0.0 or not math.isfinite(args.serial_exit_timeout):
             raise RuntimeError("serial exit timeout must be finite and positive")
         return _cutover_main(args)
+    if args.mode == "recover-ignored-sigint":
+        for name in (
+            "boundary_timeout",
+            "serial_exit_timeout",
+        ):
+            value = float(getattr(args, name))
+            if value <= 0.0 or not math.isfinite(value):
+                raise RuntimeError(f"{name.replace('_', ' ')} must be finite and positive")
+        return _recover_ignored_sigint_main(args)
+    if args.mode == "recover-ignored-sigint-preflight":
+        return _recovery_preflight_main(args)
     if args.boundary_timeout <= 0.0 or not math.isfinite(args.boundary_timeout):
         raise RuntimeError("boundary timeout must be finite and positive")
     if args.serial_exit_timeout <= 0.0 or not math.isfinite(args.serial_exit_timeout):

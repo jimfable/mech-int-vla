@@ -1306,6 +1306,28 @@ that experiments, negative results, decisions, and confidence can be audited.
   immutable raw set (GPU idle); no result receipt is published yet. Vast stays
   running because the off-instance backup is incomplete.
 
+### 2026-08-04 07:25 CEST — CALIBRATION-SCORING-001: serial M0/M1/M2 replay started
+
+- **Inputs/guards:** The read-only probe analysis completed with 160 valid
+  Calibration episodes, 9,455 stride-5 rows, selected candidate
+  `early_expert_t1_0`, numerical probe digest
+  `71a6bff1691aea4823556e256a4052f78e2126d9a6cc76437923ec25409d4afc`, and
+  bound-probe digest
+  `747c5fd8013a4ca54f17a3929df20228732cbe3c08b1b761090c5840fee94564`.
+  The new scorer verifies the immutable tag/manifest and bound probe before
+  any replay and is exclusively locked with `/workspace/runstate/calibration-score.lock`.
+- **Execution:** Remote PID `111494` is running the serial replay from the
+  Calibration raw set only. Each sidecar is atomically published under the new
+  `calibration-score-18d6494-001` staging path and is resumable without
+  overwriting existing sidecars. After all valid raws, the scorer will audit
+  the score allocation, build the OOF feature cohort, and fit the frozen M0/M1/M2
+  predictor family/Platt calibrators.
+- **Isolation:** Locked Test is not instantiated or inspected. Raw artifacts,
+  the four backup streams, and the probe analysis staging are read-only to this
+  process. Vast GPU telemetry shows the pinned model loaded (~2.3 GiB VRAM);
+  the first Calibration replay is still in progress and no sidecar has been
+  published yet.
+
 ### 2026-08-03 21:47 CEST — CALIBRATION-RUNNING-003: four cells complete
 
 - **Progress:** Calibration manifest indices 0–3 are now accounted for exactly

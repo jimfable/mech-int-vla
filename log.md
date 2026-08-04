@@ -1341,3 +1341,43 @@ that experiments, negative results, decisions, and confidence can be audited.
   tree count is 4/160. No Locked Test path has been instantiated.
 - **Decision:** Continue under the same Supervisor process and preserve all
   receipts for the eventual off-instance backup.
+
+### 2026-08-04 07:32 CEST — CALIBRATION-ANALYSIS-002: probe and failure analysis verified
+
+- **Read-only result:** The remote analysis staging set is complete and a
+  local copy was independently hash-checked. Failure annotations cover all
+  160 valid-reset Calibration episodes: 107 successes, 53 failures, 53
+  annotated terminal events, and zero early-terminal exclusions. The event
+  classes are 48 terminal-horizon and 5 irrecoverable-workspace-exit events;
+  no missed-grasp/drop event was inferred.
+- **Probe result:** The exact stride-5 pre-action cohort contains 9,455 rows
+  from 160 episodes. The grouped five-fold circular-probe CV selected
+  `early_expert_t1_0` (mean MAE `0.2533213489664437` rad, SE
+  `0.0246275630200348`) under the preregistered eligibility rule. The
+  `vlm_context` candidate was ineligible at mean MAE
+  `0.2740076992084197` rad. Mean, time-only, proprioception-only, and fixed
+  reverse-row random-label controls were all computed outcome-independently.
+- **Receipts:** Local payload hashes match the remote analysis receipts:
+  failure annotations `d004e4db…999063a`, allocation
+  `7cd831bd…7dbc1a`, probe analysis `a4cab1f…fcc5a5`, numerical probe
+  `71a6bff1…d4afc`, and bound probe `747c5fd8…94564`. The analysis records
+  `locked_test_accessed=false` and remains separate from raw/backup paths.
+- **Decision:** Keep Locked Test closed. Continue the single resumable M0/M1/M2
+  replay against the immutable raw set; no duplicate, overwrite, or protocol
+  change is authorized.
+
+### 2026-08-04 07:32 CEST — CALIBRATION-SCORING-002: M0/M1/M2 replay active
+
+- **Read-only status:** Vast instance 46677323 is `running` and direct SSH is
+  reachable. The calibration Supervisor is exited after its 160/160 receipt;
+  the only active research process is the flock-protected scorer PID `111494`.
+  It has published exactly one of the 160 valid Calibration score sidecars;
+  the log reports `score_completed` for `libero_10-task5-calibration-init10-cell0`.
+  GPU telemetry shows the pinned process using about 2.3 GiB VRAM.
+- **Isolation:** The scorer writes only to
+  `calibration-score-18d6494-001` and the later feature staging root. Raw
+  artifacts, the four disjoint resumable backup streams, and the completed
+  probe staging are not targets. Locked Test remains closed.
+- **Decision:** Leave the scorer and all four backup streams running. Do not
+  restart or parallelize scoring; stop the instance only after scoring/backup
+  jobs are genuinely idle and all irreplaceable artifacts are secured.

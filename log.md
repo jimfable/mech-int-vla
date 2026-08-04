@@ -1624,3 +1624,20 @@ that experiments, negative results, decisions, and confidence can be audited.
   `134073`/`134074`, held per-worker locks, and 2,314 MiB VRAM each. No serial
   scorer, residue, or error receipt is present. The Vast instance stays running
   while GPU and transfer jobs are concrete; Locked Test remains closed.
+
+### 2026-08-04 16:48 CEST — CALIBRATION-MONITOR-001: workers and resumed backup healthy
+
+- **Live scoring:** The direct SSH route remains healthy after the proxy route
+  timed out during banner exchange. The original Supervisor is `EXITED` after
+  its completed 160-cell collection, while the guarded continuation coordinator
+  and exactly two workers remain active. The authoritative score root has
+  reached `66/160` sidecars (`26` two-worker promotions); worker PIDs
+  `134073` and `134074` each hold their private lock and use 2,314 MiB VRAM.
+  No serial scorer, publish residue, or Locked-Test access is present.
+- **Backup:** The four checksum-aware, disjoint SSH-proxy Rsync sessions remain
+  active in the local incomplete stage, which has grown to 150 raw files and
+  approximately 5.3 GiB. It is still not treated as a verified backup; the
+  instance remains running while both GPU and transfer jobs are concrete.
+- **Decision:** Leave the authoritative coordinator, workers, and transfers
+  unchanged. Continue read-only monitoring; do not stop the instance, inspect
+  Locked Test, or launch any duplicate/reordered scorer.

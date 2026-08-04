@@ -496,3 +496,71 @@ left to environment resolution.
   of scientific/deterministic fields, stratified cost reporting, unchanged final
   feature code, fail-closed publication, and continued Locked-Test exclusion.
 - **Implementing commit:** `6cb3733a197f1374025fd08fee44d065e3350c04`
+
+### 2026-08-04 — Recover the Calibration scoring cutover after inherited SIGINT ignore
+
+- **Prior protocol commit:** `7fe9ebce54926bbb9b8ae3a47161f2fb478b5cab`
+- **Technical reason:** The committed two-worker coordinator observed and durably
+  recorded the exact 31/160 serial boundary, then sent its single planned SIGINT
+  to the content- and process-identity-bound Python scorer. The scorer had been
+  launched as a detached background job with SIGINT inherited as `SIG_IGN`.
+  `/proc` therefore showed SIGINT ignored, unblocked, and not pending; both the
+  Python process and its `flock` wrapper remained alive past the 120-second exit
+  timeout. The coordinator failed closed before reacquiring the global lock,
+  creating a continuation plan, or launching workers. It left only the original
+  cutover intent, boundary, and one SIGINT intent/dispatch receipt. Episode 32
+  subsequently completed normally and remains an immutable serial sidecar. A
+  new read-only GPT-5.6-Sol-xhigh review approved a narrowly scoped recovery
+  protocol; without every guard below, the serial scorer remains authoritative.
+- **Exact change:** Append a recovery attempt without altering any original
+  receipt. First close the original signal attempt truthfully as dispatched but
+  ineffective because of the inherited ignore disposition; never attribute a
+  later exit to SIGINT. From a stable, fully validated current serial inventory
+  and log offset, wait for one fresh parsed `score_completed` record. Require it
+  to be exactly the next manifest episode and bind its ID, digest, count, total,
+  log identity, byte offset, and timestamp. Immediately revalidate the exact
+  Python PID, start ticks, executable, complete argv, parent identity, runner
+  hash, and signal masks; SIGTERM must be neither ignored, blocked, nor
+  custom-caught. Fsync a hash-linked recovery intent, send SIGTERM exactly once
+  to the Python PID only, then fsync its dispatch receipt. Never signal the
+  wrapper first, never repeat or escalate the termination signal, and never use
+  SIGKILL.
+
+  After observing Python exit and natural wrapper exit, require no replacement
+  or orphan scorer, exclusive reacquisition of the existing global flock, and a
+  complete reload/hash validation of every authoritative sidecar. The post-exit
+  inventory must be exactly the stable baseline plus the single freshly observed
+  boundary episode, in manifest-prefix order, with all earlier hashes unchanged
+  and the new combined digest equal to the logged digest. Any extra, missing,
+  malformed, or changed sidecar, or any `.tmp-*`, `.publish.lock`, staging, or
+  feature-finalization residue, aborts before planning. Record only that SIGTERM
+  was dispatched and process exit was subsequently observed unless stronger
+  causal evidence is available. Treat any already-started next episode as
+  abandoned non-authoritative computation and report its cost separately when
+  measurable, otherwise as unavailable. Freeze the actual manifest complement
+  only after these checks, then use the already committed outcome-blind
+  alternating two-worker assignment and all existing no-overwrite, provenance,
+  execution-mode, finalizer, and Locked-Test guards. A restart after durable
+  recovery dispatch may only wait and validate; it must never re-signal.
+- **Affected hypotheses/metrics:** No scientific array, action, activation,
+  seed, transformation, availability mask, probe, M0/M1/M2 feature, target,
+  split, estimand, or statistical rule changes. The newly completed serial
+  sidecars remain in the serial execution-cost stratum. The abandoned partial
+  episode is excluded from the canonical episode denominator and is disclosed
+  only as recovery overhead. Physical costs remain stratified by execution
+  mode and are never predictor inputs.
+- **Outcome visibility:** All 160 raw Calibration rollouts and their outcomes,
+  the selected probe, the scheduling benchmark and equivalence audit, the first
+  32 serial scoring sidecars, and the failed SIGINT attempt were visible before
+  this recovery decision. No Locked Test path contents, artifact, label, score,
+  or protected-split output was accessed.
+- **Bias risk and mitigation:** The recovery is operational rather than
+  outcome-adaptive: its future boundary is determined solely by the next
+  manifest-order completion, and the later worker shards exclude labels,
+  features, durations, state counts, and costs. Main risks are SIGTERM bypassing
+  Python cleanup, observer delay, an unexpected extra publication, unavailable
+  partial-episode cost, and premature lock release. Durable attempt receipts,
+  exact identity/signal-mask checks, Python-only signalling, full post-exit
+  validation, residue rejection, exclusive flock acquisition, immutable hashes,
+  and fail-closed fallback to the serial scorer mitigate those risks.
+- **Implementing commit:** `PENDING`

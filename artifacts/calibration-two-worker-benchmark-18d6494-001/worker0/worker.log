@@ -1,0 +1,12 @@
+Reducing the number of VLM layers to 16 ...
+Loading weights from local directory
+[robosuite WARNING] No private macro file found! (__init__.py:7)
+WARNING:robosuite_logs:No private macro file found!
+[robosuite WARNING] It is recommended to use a private macro file (__init__.py:8)
+WARNING:robosuite_logs:It is recommended to use a private macro file
+[robosuite WARNING] To setup, run: python /venv/main/lib/python3.12/site-packages/robosuite/scripts/setup_macros.py (__init__.py:9)
+WARNING:robosuite_logs:To setup, run: python /venv/main/lib/python3.12/site-packages/robosuite/scripts/setup_macros.py
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"elapsed_seconds": 398.7595073520206, "episode_id": "libero_10-task5-calibration-init10-cell2", "result_sha256": "4cd4487d045f2d1133f9bc4843ae94629d03b2aa7633921505ad3e56c2909f47", "scored_state_count": 33, "sidecar_path": "/workspace/research-artifacts/analysis-staging/calibration-two-worker-benchmark-18d6494-001/worker0/scores/calibration/libero_10-task5-calibration-init10-cell2"}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"elapsed_seconds": 450.88117439404596, "episode_id": "libero_10-task5-calibration-init10-cell4", "result_sha256": "126566448eba89f48b4857386d3927e04907cc0db86dd9405e8c3e8aa7a19639", "scored_state_count": 36, "sidecar_path": "/workspace/research-artifacts/analysis-staging/calibration-two-worker-benchmark-18d6494-001/worker0/scores/calibration/libero_10-task5-calibration-init10-cell4"}

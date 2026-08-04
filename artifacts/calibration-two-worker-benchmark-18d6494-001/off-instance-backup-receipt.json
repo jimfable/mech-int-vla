@@ -1,0 +1,24 @@
+{
+  "destination_root": "artifacts/calibration-two-worker-benchmark-18d6494-001",
+  "exact_inventory_match": true,
+  "file_count": 15,
+  "files": [
+    {"path": "benchmark-summary.json", "sha256": "0970accf13dca1c9cca7eb6c0381976c85d600a75bd11fb4cb7a688348adf0f3", "size_bytes": 9685},
+    {"path": "plan.json", "sha256": "c4225f26348d400abbd257a46e3585ab4c72fb78cc200941de3b5c8f05130fa8", "size_bytes": 11941},
+    {"path": "resource-samples.json", "sha256": "7b3771906049bce5d73d020b37cab7e708400fee8f069714266fbd8874738a61", "size_bytes": 806189},
+    {"path": "worker0/scores/calibration/libero_10-task5-calibration-init10-cell2/metadata.json", "sha256": "cb74c8f2d70fc12557e4c10987487ea38e4d882c1d4773f4eb8c5e1a781a23c2", "size_bytes": 2302},
+    {"path": "worker0/scores/calibration/libero_10-task5-calibration-init10-cell2/primitives.npz", "sha256": "f30ca07381afd45944598556681dffb27ba1e484e4dd882a47ce2c21f6d53f31", "size_bytes": 1540859},
+    {"path": "worker0/scores/calibration/libero_10-task5-calibration-init10-cell4/metadata.json", "sha256": "f6761cd3ad9c77a491703b14d1bf950238fc5b9a0dd63c2152773ca38117a59e", "size_bytes": 2302},
+    {"path": "worker0/scores/calibration/libero_10-task5-calibration-init10-cell4/primitives.npz", "sha256": "4cb985d4e7d37a39ba0b1feea9b1d04fb8b75f7d5b67ce2901747349e4ed9c99", "size_bytes": 1680028},
+    {"path": "worker0/summary.json", "sha256": "22489b19edd1804ff9a5b7b38c232b294af739c10a353ffc53e9a7640ed879fd", "size_bytes": 1269},
+    {"path": "worker0/worker.log", "sha256": "a427ad249b04a00d372bac299c838cb9ce1e942005be5325197e4930453de76e", "size_bytes": 1487},
+    {"path": "worker1/scores/calibration/libero_10-task5-calibration-init10-cell3/metadata.json", "sha256": "1e51167e572864cf5be1bb4a774d21d1733314969ea9b75f88ce328d9c283be1", "size_bytes": 2302},
+    {"path": "worker1/scores/calibration/libero_10-task5-calibration-init10-cell3/primitives.npz", "sha256": "896d3fbc96febb38929b2cd899d3e056d11ce35b7ea504d9e4a78acb5fd67ef2", "size_bytes": 1680090},
+    {"path": "worker1/scores/calibration/libero_10-task5-calibration-init10-cell7/metadata.json", "sha256": "6b4e085c2ff195f56a0d01e4e6733f4ba42bc0293f3f4e4dddcae89cbec4234b", "size_bytes": 2302},
+    {"path": "worker1/scores/calibration/libero_10-task5-calibration-init10-cell7/primitives.npz", "sha256": "be3bda5421fc1d490251f6d26cd8cfdfaf347875725f33dcd7b7e49d29c9d413", "size_bytes": 1867489},
+    {"path": "worker1/summary.json", "sha256": "b36f3af44f66e62445baf635283a0196d196e6e0be67fdd7bdbb2db81f21c9da", "size_bytes": 1267},
+    {"path": "worker1/worker.log", "sha256": "5811d0e2cc901b2b1aaf193ebd35f5b0f0c77a3fc904afdaa479d808901b4639", "size_bytes": 1487}
+  ],
+  "source_root": "/workspace/research-artifacts/analysis-staging/calibration-two-worker-benchmark-18d6494-001",
+  "verified_at": "2026-08-04T08:48:00Z"
+}

@@ -1459,3 +1459,45 @@ that experiments, negative results, decisions, and confidence can be audited.
   serial PID/start-time/executable/command identity checks, a 2,400-second
   watchdog, immutable reference rechecks, fresh-path requirements, and
   benchmark-script digest checks are fail-closed. Locked Test remains closed.
+
+### 2026-08-04 10:49 CEST — CALIBRATION-SCORING-BENCHMARK-002: 1.72× throughput but byte-identity gate failed
+
+- **Completed measurement:** The frozen two-worker benchmark completed all four
+  previously scored episodes (145 total scored states) in `926.955328475` s,
+  including two independent model loads. This is `15.534729191` episodes/hour
+  versus `9.042013620` episodes/hour from the same four uninterrupted serial
+  publication intervals (`1592.565617110` s), an observed throughput ratio of
+  `1.718060804`. Worker episode wall times were 398.76/450.88 s and
+  426.20/460.92 s, with approximately 31.2 s model load per worker.
+- **Byte comparison:** The required whole-sidecar gate failed in all 4/4 cases:
+  every benchmark `metadata.json` and `primitives.npz` SHA-256 differs from its
+  authoritative serial counterpart. Array-level comparison is more specific:
+  every scientific array (control steps, availability masks, seeds, original/
+  transformed/intervention actions, and activations) is byte-identical in all
+  four episodes, while exactly the four runtime-measurement arrays
+  `original_cost`, `transformed_cost`, `intervention_minus_cost`, and
+  `intervention_plus_cost` differ. The metadata consequently binds a different
+  primitives digest/cost summary. This scientific equivalence does not satisfy
+  the user's stricter complete-sidecar rule.
+- **Resource profile:** Across 927 one-second samples, device-wide GPU
+  utilization (including the untouched serial scorer) averaged 83.59% and
+  peaked at 93%; total VRAM averaged 6,714.8 MiB and peaked at 6,993 MiB. Each
+  benchmark worker peaked at 2,314 MiB VRAM and about 5.35/5.46 GB RSS; combined
+  worker RSS averaged 9.80 GB and peaked at 10.81 GB. Combined benchmark-worker
+  CPU averaged 589.5%, while the authoritative serial scorer averaged 318.4%.
+  Host used RAM averaged 67.38 GB and peaked at 73.51 GB.
+- **Integrity and backup:** The serial PID `111494`, start ticks, executable,
+  parent, and full command remained identical throughout; it advanced normally
+  to 18/160. The benchmark wrote nothing to the authoritative score root and
+  records `locked_test_accessed=false`. The 15-file, 7.3-MiB remote benchmark
+  set was copied to
+  `artifacts/calibration-two-worker-benchmark-18d6494-001/`; every relative path,
+  byte size, and SHA-256 matches remote. Key receipts are plan
+  `c4225f26…130fa8`, resource samples `7b377190…38a61`, and final summary
+  `0970accf…adf0f3`; the local 15-file backup receipt hashes to
+  `99e8f0bf…abf85`.
+- **Decision:** Retain the existing serial scorer. Do not stop it, shard the
+  remaining manifest, create an amendment, or seek the conditional Sol-xhigh
+  scheduling review: the prerequisite full-sidecar byte identity is false, so
+  no switch is eligible regardless of the measured throughput increase. Locked
+  Test remains closed.

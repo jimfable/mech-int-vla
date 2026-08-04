@@ -1501,3 +1501,40 @@ that experiments, negative results, decisions, and confidence can be audited.
   scheduling review: the prerequisite full-sidecar byte identity is false, so
   no switch is eligible regardless of the measured throughput increase. Locked
   Test remains closed.
+
+### 2026-08-04 11:06 CEST — CALIBRATION-SCORING-EQUIVALENCE-001: cost-only divergence independently verified
+
+- **Revised authorization and question:** The user explicitly authorized treating
+  scheduling-dependent physical cost measurements as expected differences if all
+  scientific primitives, masks, seeds, transformations, non-cost metadata, and
+  M0/M1/M2 inputs are identical. No scheduling change has yet been made; the
+  authoritative serial scorer remains healthy and reached 21/160 sidecars during
+  this read-only audit.
+- **Independent sidecar audit:** A new fail-closed reader reloaded both complete
+  files for all four serial/benchmark episode pairs rather than trusting the prior
+  summary. Exactly four arrays differ: `original_cost`, `transformed_cost`,
+  `intervention_minus_cost`, and `intervention_plus_cost`. Every other array is
+  byte-identical, including control steps, actions, selected activations, noise
+  seeds, transform/intervention availability masks, and all transformation and
+  intervention outputs. Every non-cost metadata field is identical; the sole JSON
+  difference is `files.primitives_sha256`, which necessarily binds the differing
+  cost-containing NPZ.
+- **Cost-field localization:** Within those four arrays, `forward_count`,
+  `intervention_count`, `logical_activation_bytes`, and
+  `compressed_activation_bytes` are identical. Differences are confined to the
+  physical runtime/resource fields `cuda_event_ms`, `wall_time_ns`, and, where the
+  allocator state changed, `peak_allocated_bytes` and
+  `incremental_peak_allocated_bytes`.
+- **Feature exclusion:** Static dependency extraction from the frozen feature
+  source found only control steps, masks, actions, and activations as score-array
+  inputs to feature construction; no cost array enters an M0/M1/M2 primitive or
+  feature schema. A synthetic end-to-end regression changed every dynamic cost
+  column and independently rebuilt the Calibration feature cohort; all M0, M1,
+  and M2 matrices remained bit-identical. The full feature-pipeline test file
+  passes 19/19 tests.
+- **Receipt and boundary:** The off-instance equivalence receipt is
+  `artifacts/calibration-scoring-equivalence-audit-18d6494-001/equivalence-audit.json`
+  at SHA-256 `68904e5285b029f7330cdeb43de85d35396f8e10b10f898298744ab086dc6d85`.
+  It records `locked_test_accessed=false` and no writes to either sidecar set. The
+  requested read-only Sol-xhigh review is in progress; no amendment, signal,
+  shard, or worker launch is permitted before its verdict.

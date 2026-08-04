@@ -547,6 +547,45 @@ def test_deterministic_hashes_matrices_and_bundle_are_immutable() -> None:
         first_bundle.coverage_states[0].vector[0] = 0
 
 
+def test_runtime_cost_arrays_do_not_change_m0_m1_m2_features() -> None:
+    probe = _probe("early_expert_t1_0")
+    raws, serial_scores = _paired_cohort(split="calibration", probe=probe)
+    _, serial = build_calibration_features(raws, serial_scores, probe)
+
+    two_worker_scores = []
+    dynamic_cost_columns = (0, 1, 4, 5)
+    for score_index, score in enumerate(serial_scores):
+        arrays = {
+            name: np.array(value, copy=True) for name, value in score.arrays.items()
+        }
+        for name in (
+            "original_cost",
+            "transformed_cost",
+            "intervention_minus_cost",
+            "intervention_plus_cost",
+        ):
+            finite = np.isfinite(arrays[name])
+            for column in dynamic_cost_columns:
+                values = arrays[name][..., column]
+                values[finite[..., column]] += float((score_index + 1) * (column + 1))
+        two_worker_scores.append(
+            replace(
+                score,
+                arrays=_readonly_arrays(arrays),
+                metadata_sha256=_sha(f"two-worker-metadata:{score_index}"),
+                primitives_sha256=_sha(f"two-worker-primitives:{score_index}"),
+            )
+        )
+
+    _, two_worker = build_calibration_features(raws, two_worker_scores, probe)
+    assert serial.m0_names == two_worker.m0_names
+    assert serial.m1_names == two_worker.m1_names
+    assert serial.m2_names == two_worker.m2_names
+    assert np.array_equal(serial.m0_matrix, two_worker.m0_matrix, equal_nan=True)
+    assert np.array_equal(serial.m1_matrix, two_worker.m1_matrix, equal_nan=True)
+    assert np.array_equal(serial.m2_matrix, two_worker.m2_matrix, equal_nan=True)
+
+
 def test_locked_test_uses_full_bundle_and_test_label_cannot_change_features() -> None:
     probe = _probe()
     calibration_raws, calibration_scores = _paired_cohort(

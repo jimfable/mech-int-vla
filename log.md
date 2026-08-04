@@ -1381,3 +1381,19 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** Leave the scorer and all four backup streams running. Do not
   restart or parallelize scoring; stop the instance only after scoring/backup
   jobs are genuinely idle and all irreplaceable artifacts are secured.
+
+### 2026-08-04 07:37 CEST — CALIBRATION-SCORING-003: active replay and backup checkpoint
+
+- **Read-only status:** Vast API still reports `running` for instance 46677323
+  (`dph_total=0.3437037037`; current inactive-storage field
+  `storage_total_cost=0.0370370370`). Direct SSH confirms the same
+  flock-protected scorer PID `111494` is alive at high CPU utilization with
+  approximately 2.3 GiB GPU memory and no error receipt. The serial scorer has
+  one validated sidecar and is processing the next 520-step Calibration cell.
+- **Backup:** The four existing disjoint Rsync streams remain unchanged and
+  have advanced to approximately 4.8 GiB / 134 local files in the ignored
+  incomplete staging path. They still have active SSH children; no stream
+  overlap or raw-tree write exists.
+- **Decision:** Preserve both concrete jobs and the current immutable remote
+  artifacts. No restart, parallel scoring, transfer-method switch, stop, or
+  Locked-Test access is warranted.

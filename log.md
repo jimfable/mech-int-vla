@@ -1855,3 +1855,71 @@ that experiments, negative results, decisions, and confidence can be audited.
   the smallest value with the expected target-action sign and an off-manifold
   rate ≤ 5%. The natural activation distribution needed for that off-manifold
   reference is already present in the score sidecars and needs no new compute.
+
+### 2026-08-05 20:18 CEST — CALIBRATION-CAUSAL-PAIRS-001: pair inventory passes the gate with room to spare
+
+- **Purpose:** Phase 1 of the §8 causal protocol, deliberately run before any GPU
+  work. `PREREG.md:356` declares patching *inconclusive rather than negative*
+  below 30 valid pairs, so counting pairs first can end the causal phase cheaply.
+  Implemented as `ops/calibration_pair_inventory_18d6494.py`. It chooses no
+  alpha, patches nothing, and runs no model.
+- **Result — the gate is wide open.** From the 9,455 scored Calibration states,
+  **19,829 valid confirmatory donor/recipient pairs** exist under the frozen
+  tolerances, against a required minimum of 30. 19,335 pairs (97.5%) join states
+  from different episodes and 14,848 (74.9%) from different base-init clusters,
+  so the supply is not an artifact of pairing neighbouring steps within one
+  trajectory. 3,062 distinct states participate and all 20 clusters are
+  represented. Orientation differences span the full admissible window: minimum
+  30.0°, median 53.1°, maximum 90.0°.
+- **Where the constraint actually binds:** states fall into four exact-match
+  buckets — pregrasp/no-contact 5,105, transport/contact 2,951,
+  pregrasp/contact 1,199, grasped/contact 200. Marginal pass rates on random
+  pairs are 0.72% for the 2 cm end-effector tolerance, 7.8% for the 2 cm object
+  tolerance, 23.5% for normalized time and 53.7% for the orientation window. The
+  end-effector constraint is doing nearly all the work; the tolerances are not
+  loose. The realised 19,829 is about 16x what independence would predict, which
+  is expected because states along stereotyped trajectories are positively
+  correlated in phase, time and pose.
+- **Note on `symmetry_order = 2`:** the symmetry-aware orientation difference is
+  folded into [0°, 90°], so the preregistered 30-90° confirmatory window covers
+  the upper two thirds of the attainable range rather than a narrow slice.
+- **Implementation note:** exhaustive pairing is O(n^2) (~44M comparisons) and is
+  not tractable in pure Python, so eligibility is evaluated in two stages —
+  bucket on the criteria that must match exactly, apply a vectorised numeric
+  prefilter with a 1e-6 slack margin, then confirm every survivor with the frozen
+  `pair_eligibility` itself. The prefilter can only admit a superset, so the
+  reported counts are those of the frozen implementation. 18,118,786 same-bucket
+  comparisons were made; the whole run takes about 4 seconds because `np.load` on
+  an npz decompresses only accessed members, and the two 75 MB image arrays per
+  episode are never touched.
+- **Independent verification:** an independent model (Fable 5) re-derived the
+  inventory from scratch with **no prefilter and no bucketing** — a full exact
+  O(n^2) recount using an independent rotation-matrix quaternion path — and
+  reproduced every figure to the last digit, including the orientation quantiles.
+  It further confirmed that the empty exclusion dictionary is genuine rather than
+  a bypass (the prefilter-versus-exact gap is exactly 0, and the closest
+  same-bucket approach to a tolerance boundary is 1.5e-8), that the quaternion
+  convention matches `construct_m1_raw_pose` to 4e-14 rad with eef and object not
+  swapped, that positions are in metres so 0.02 is the 2 cm of `PREREG.md:349`,
+  and that 275 brute-forced sample pairs show no false positives and, critically,
+  no false negatives. Its one substantive finding — that the cohort digest was
+  used only as a directory name and never verified against artifact bytes — was
+  fixed by switching to the validated `load_feature_cohort`; the hardened script
+  reproduces a byte-identical receipt.
+- **Environment:** the Vast instance refused to start (`resources_unavailable`;
+  the RTX 5090 is currently allocated elsewhere), so this CPU-only phase ran
+  locally in a matched environment built with `uv` — python 3.12.11 and
+  numpy 2.2.6 against the instance's 3.12.13 and 2.2.6. No GPU is required for
+  a pair inventory, and every downstream quantity will be recomputed on the
+  instance during alpha calibration.
+- **Receipt:** `artifacts/calibration-pair-inventory-18d6494-001/pair-inventory.json`,
+  SHA-256 `6e1659b4…d832133`, `locked_test_accessed=false`.
+- **Decision:** Pair supply is not the limiting factor, so the causal phase
+  proceeds. Next is alpha calibration over {0.25, 0.5, 1.0} on the GPU, choosing
+  the smallest value with the expected target-action sign and an off-manifold
+  rate ≤ 5%. Two implementation consequences follow from this inventory. First,
+  `select_pairs` is itself O(n^2) over candidates and cannot be handed all 9,455
+  states directly; the pairing stage will need the same bucketed treatment, with
+  its selection semantics preserved exactly. Second, with 19,829 pairs available
+  the 20-pairs-per-seed limit is not supply-constrained, so the three
+  preregistered seeds will genuinely diversify rather than exhaust the pool.

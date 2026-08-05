@@ -1923,3 +1923,88 @@ that experiments, negative results, decisions, and confidence can be audited.
   its selection semantics preserved exactly. Second, with 19,829 pairs available
   the 20-pairs-per-seed limit is not supply-constrained, so the three
   preregistered seeds will genuinely diversify rather than exhaust the pool.
+
+### 2026-08-05 20:55 CEST — CALIBRATION-DEFECT-001: camera and object-pose counterfactuals are silent no-ops
+
+- **STOP-THE-LINE FINDING.** While inspecting the existing intervention data as a
+  free preview of the causal question, the M2 column
+  `m2_object_probe_equivariance_error_mean_rad` turned out to be *constant* at
+  0.2617993877991494 rad across all 6,211 finite rows — exactly 15.0 degrees,
+  which is precisely the magnitude of the object-yaw transform itself. That is
+  the algebraic signature of a probe prediction that does not move at all when
+  the object is rotated.
+- **Direct measurement over all 160 sidecars / 9,455 states:**
+
+  | transform family | states | max abs delta activation | max abs delta action |
+  |---|---|---|---|
+  | brightness_0_85 | 9455 | 0.2539 | 2.107 |
+  | brightness_1_15 | 9455 | 0.1953 | 2.098 |
+  | camera_yaw_neg_3 | 9455 | **0** | **0** |
+  | camera_yaw_pos_3 | 9455 | **0** | **0** |
+  | object_yaw_neg_15 | 6836 | **0** | **0** |
+  | object_yaw_pos_15 | 7042 | **0** | **0** |
+
+  The camera and object-pose counterfactuals are bit-identical to the factual
+  rollout. Photometric transforms work, and probe-shift interventions genuinely
+  perturb activations (max 0.0625), so the sidecars are not globally frozen —
+  only the geometric transforms are inert.
+- **Root cause, located in code:** `libero_runtime.py:819` calls
+  `_backend(self.wrapper)._get_observations()` **without `force_update=True`**.
+  Under the pinned `robosuite==1.4.0` (`environment-gpu.freeze:146`),
+  `_get_observations(force_update=False)` returns *cached* observable values that
+  are refreshed only inside `step()`/`reset()`. The transform helpers
+  (`apply_object_yaw`, `apply_camera_transform`) do write MuJoCo state and call
+  `sim.forward()`, but nothing re-renders the cameras. The policy therefore
+  receives a bit-identical observation, and a deterministic policy on the same
+  noise draw reproduces the original actions and activations exactly. Robosuite's
+  own docstring names this exact use case as requiring `force_update=True`.
+  Brightness is unaffected because it edits the stored pixel arrays directly.
+  Rollout-time initial conditions are unaffected because `reset()` runs settle
+  `step()` calls that refresh observables. The unit tests missed it because
+  `tests/test_libero_runtime.py:116` uses a fake backend whose
+  `_get_observations()` regenerates observations statelessly.
+- **Draw alignment ruled out as an explanation:** transformed draw *k* shares
+  original draw *k*'s noise object by construction (`scoring.py:813-820`,
+  `894-899`). Fingerprinting one state shows transformed family-4 draw 0 is
+  bit-equal to original draw 0 while differing from draws 1-3 by 0.78-0.88, so
+  the zeros are matched-draw bit-equality against mutually distinct draws, not a
+  misalignment artifact.
+- **Blast radius, verified column by column on the published cohort:**
+  - **M0: 5 of 13 columns degenerate** — `m0_camera_action_drift_mean`/`_max`,
+    `m0_object_action_drift_mean`/`_max` (constant 0), and
+    `m0_camera_render_equivariance_error` (constant 0). The remaining 8 columns
+    are healthy.
+  - **M2: 2 of 8 increment columns degenerate** —
+    `m2_object_probe_equivariance_error_mean_rad` (constant 15°) and
+    `m2_camera_probe_circular_dispersion` (≤1.7e-16). Brightness dispersion,
+    resultant norm, robust-z, flow-noise dispersion, controllability and
+    specificity are healthy.
+  - **M1 is unaffected**, as are the raw rollouts and the failure labels.
+- **What this does to the headline:** the entire counterfactual-action-drift arm
+  of M0 carried zero information, so M0's 0.7889 AUROC rests only on brightness
+  and output-dispersion features. More damaging, the single M2 feature aimed most
+  directly at the project's primary variable — relative planar **orientation** —
+  was a constant. The Calibration read-out "M2 over M1 is 1.17%" and the
+  lead-time null were therefore computed with M2's on-thesis features unable to
+  contribute. **That comparison is not a fair test of internal geometry and must
+  not be reported as one.** The earlier CALIBRATION-ALARM-001 and
+  CALIBRATION-FEATURE-FINALIZATION-001 conclusions stand as arithmetic but are
+  suspended as science pending re-scoring.
+- **Not previously documented:** no entry in `log.md`, `AMENDMENTS.md` or
+  `PREREG.md` acknowledges inert transforms, and `PREREG.md:208-216` explicitly
+  presupposes that camera yaw produces output-equivariance error and object yaw
+  produces counterfactual action drift. There is no legitimate protocol reason
+  for exact zeros.
+- **Why this is recoverable:** the Locked Test set has never been opened, the raw
+  rollouts are intact and fully backed up, and the defect is confined to
+  scoring-time counterfactual observation refresh. A corrected re-scoring before
+  any Locked Test access stays inside the preregistered framework.
+- **Decision:** Halt the causal phase. Do not calibrate alpha, do not freeze
+  Calibration, and do not approach Locked Test on the current sidecars. The fix
+  is a one-call change (`force_update=True`) in a file inside
+  `SCORING_SOURCE_FILES`, so it necessarily invalidates `scoring_source_sha256`
+  and every score sidecar bound to it — this requires an `AMENDMENTS.md` entry
+  and a full re-scoring of all 160 episodes, followed by rebuilt features,
+  refitted predictors, and repeated alarm calibration. That is a multi-hour GPU
+  job and a deliberate protocol decision, so it is put to the user rather than
+  taken autonomously.

@@ -682,4 +682,4 @@ left to environment resolution.
   predates the results, and by binding the reconstruction to four frozen anchors
   that fail closed on any mismatch. The choice was reviewed read-only by an
   independent model (Fable 5) against the preregistration before implementation.
-- **Implementing commit:** `PENDING-BIND`
+- **Implementing commit:** `cab0654c4f0698e27f3f488f5ab51a1fd5035d97`

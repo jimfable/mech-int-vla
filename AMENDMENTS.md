@@ -631,4 +631,4 @@ left to environment resolution.
   guards, and a no-overwrite promotion. Determinism is verified independently
   by requiring the rerun's predictor metadata to reproduce the `attempt-0001`
   values exactly.
-- **Implementing commit:** `PENDING-BIND`
+- **Implementing commit:** `b009029b84a48c4c1e1c44fbd48e0a33616557c7`

@@ -193,10 +193,11 @@ def _artifact(*, valid: bool = True, action_count: int = 2) -> RolloutArtifact:
     )
 
 
-def _trace(step: int) -> RawTraceFrame:
+def _trace(step: int, edit: int = 0) -> RawTraceFrame:
+    # ``edit`` stands in for a simulator edit that a real re-render would show.
     raw = {
-        "agentview_image": np.full((2, 2, 3), 10 + step, dtype=np.uint8),
-        "robot0_eye_in_hand_image": np.full((2, 2, 3), 20 + step, dtype=np.uint8),
+        "agentview_image": np.full((2, 2, 3), 10 + step + edit, dtype=np.uint8),
+        "robot0_eye_in_hand_image": np.full((2, 2, 3), 20 + step + edit, dtype=np.uint8),
         "robot0_eef_pos": np.asarray([step, 1, 2], dtype=np.float64),
         "robot0_eef_quat": np.asarray([0, 0, 0, 1], dtype=np.float64),
         "robot0_gripper_qpos": np.asarray([0.1, 0.2], dtype=np.float64),
@@ -245,6 +246,9 @@ class FakeEpisode:
         self._has_reset = False
         self.index = 0
         self.formatted: dict[str, Any] | None = None
+        # Non-zero while a counterfactual condition is applied, so that a
+        # transform which never reaches the observation is detectable.
+        self.pending_edit = 0
 
     def reset(self, *, seed: int, condition: ConditionSpec) -> Any:
         assert seed == 10100
@@ -267,7 +271,7 @@ class FakeEpisode:
         )
 
     def current_raw_trace(self) -> RawTraceFrame:
-        return _trace(self.index)
+        return _trace(self.index, edit=self.pending_edit)
 
     def format_observation(self, raw: dict[str, Any]) -> dict[str, Any]:
         self.formatted = copy.deepcopy(raw)
@@ -854,9 +858,16 @@ def test_adapter_runs_end_to_end_through_atomic_sidecar(
         SimulatorSnapshot=lambda **kwargs: SimpleNamespace(**kwargs),
         capture_simulator_snapshot=lambda wrapper: snapshot,
         restore_simulator_snapshot=lambda wrapper, value: None,
-        apply_condition=lambda wrapper, condition, primary_object_name: None,
+        apply_condition=lambda wrapper, condition, primary_object_name: setattr(
+            adapter.episode, "pending_edit", 1 + abs(int(condition.parameters.get("yaw", 1)))
+        ),
         counterfactual_validity_reasons=lambda *args, **kwargs: (),
     )
+    original_restore = runtime.restore_simulator_snapshot
+    runtime.restore_simulator_snapshot = lambda wrapper, value: (
+        setattr(adapter.episode, "pending_edit", 0),
+        original_restore(wrapper, value),
+    )[1]
     monkeypatch.setattr(scoring_runtime, "_libero_runtime_module", lambda: runtime)
     result = score_replay_to_sidecar(
         adapter,

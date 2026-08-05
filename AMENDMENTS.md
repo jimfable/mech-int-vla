@@ -769,7 +769,7 @@ left to environment resolution.
      tensor lifetime: a released tensor's id can be reused, and an intervention
      would then be measured against a different draw's original activation with
      no error raised. The cache is now keyed by a SHA-256 of the draw's bytes.
-- **Implementing commit:** `PENDING-BIND`
+- **Implementing commit:** `773290d32482ca3d18b69a3a0bded4875d14f1fc`
 
 ### 2026-08-05 — Remove AMENDMENTS.md from the frozen configuration digest
 
@@ -804,7 +804,7 @@ left to environment resolution.
   quantity in the analysis reads it. Every file that actually parameterises the
   experiment stays in the digest, and the removal is recorded here and in the
   code comment at the definition site.
-- **Implementing commit:** `PENDING-BIND`
+- **Implementing commit:** `773290d32482ca3d18b69a3a0bded4875d14f1fc`
 
 ### 2026-08-05 — Record the coverage-feature fold coupling as a known limitation
 
@@ -843,4 +843,4 @@ left to environment resolution.
   that the residual primary-contrast bias favours M2 — so an M2 null result is
   conservative — and by the preregistered sensitivity analysis above. The primary
   estimand is decided on Locked Test, which carries none of this coupling.
-- **Implementing commit:** `PENDING-BIND`
+- **Implementing commit:** `773290d32482ca3d18b69a3a0bded4875d14f1fc`

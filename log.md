@@ -2008,3 +2008,61 @@ that experiments, negative results, decisions, and confidence can be audited.
   refitted predictors, and repeated alarm calibration. That is a multi-hour GPU
   job and a deliberate protocol decision, so it is put to the user rather than
   taken autonomously.
+
+### 2026-08-06 01:10 CEST — CALIBRATION-RESCORE-001: fix verified on hardware, re-scoring under way
+
+- **The fix works.** The first re-scored episode
+  (`libero_10-task5-calibration-init10-cell0`) shows every transform family
+  moving the policy output, where the defective run showed exact zeros:
+
+  | family | defective run | re-scored |
+  |---|---|---|
+  | brightness_0_85 | 0.2539 | 0.125 |
+  | brightness_1_15 | 0.1953 | 0.125 |
+  | camera_yaw_neg_3 | **0** | **0.5645** |
+  | camera_yaw_pos_3 | **0** | **0.5898** |
+  | object_yaw_neg_15 | **0** | **0.4883** |
+  | object_yaw_pos_15 | **0** | **0.7188** |
+
+  (max absolute activation delta; action deltas are ~2.05 for every family.) The
+  geometric transforms now move activations *more* than the photometric ones,
+  which is physically sensible: a 15° object rotation changes the rendered scene
+  far more than a 15% brightness scale. Object-transform availability is 13/39
+  and 12/39 states, consistent with the previously observed ~33% rejection rate,
+  so the validity checks still bite. The inertness guard did not fire and the
+  sidecar published normally.
+- **Pre-run gates, all passed:**
+  - Full test suite green *on the instance*, including the four torch-dependent
+    modules that cannot run locally.
+  - Two further defects surfaced at this gate and were fixed. First, a
+    pre-existing platform bug: `wilson_interval(0, 10).lower` returned
+    2.8e-17 instead of 0 on x86 while passing on ARM, so the endpoint is now
+    pinned exactly. Second, and more seriously, the end-to-end scoring test
+    mocked `apply_condition` as a no-op and its fake policy never read the
+    images — it was structurally blind to the very defect being fixed. The new
+    inertness guard caught it, which is the first evidence that the guard earns
+    its keep.
+  - Probe re-bound rather than refitted. The numerical probe reproduced
+    **bit-identically** (`71a6bff1…`), as did the rollout allocation receipt
+    (`7cd831bd…`), the four selection controls, the 1-SE candidate choice, and
+    all 160 failure annotations (107 success / 53 failure). Exactly two recorded
+    values changed — `configuration_sha256` and `scoring_source_sha256` — which
+    are precisely the two that had to. This confirms the probe never depended on
+    the defective counterfactuals. New bound probe: `e94269a1…`.
+- **Commit topology:** `COLLECTION_COMMIT`/`COLLECTION_TAG` stay pinned at
+  `18d6494`/`prereg-locked-v1` and continue to validate the authority receipt,
+  the collection receipt and the manifest reconstruction. The new
+  `calibration-rescore-v1` tag identifies the commit the scoring code runs at;
+  the runner requires `HEAD` to equal it. Conflating the two would have broken
+  manifest reconstruction and rejected every raw artifact.
+- **Execution choice:** the serial runner, not the two-worker continuation
+  machinery. Serial is slower but resumable and free of the cutover/signal
+  recovery paths that previously cost a day of debugging. Robustness is worth
+  more than the wall-clock saving here.
+- **Open:** the observed first-episode time is longer than the pre-fix baseline
+  suggested, so the wall-clock estimate is being measured rather than assumed
+  before it is reported. Forced re-renders add roughly eleven extra two-camera
+  renders per scored state, which is the expected source of any slowdown.
+- **Decision:** let the run proceed. Every scored episode is validated before it
+  is published, so a residual inert transform aborts within minutes instead of
+  surviving the full run. Locked Test remains closed.

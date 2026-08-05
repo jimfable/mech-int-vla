@@ -1742,3 +1742,79 @@ that experiments, negative results, decisions, and confidence can be audited.
   followed by a clean tracked freeze and the `calibration-locked-v1` tag before
   any Locked Test access. The instance is stopped once the remaining
   irreplaceable artifacts are secured; its disk is preserved.
+
+### 2026-08-05 17:20 CEST — CALIBRATION-ALARM-001: alarm thresholds fixed, Lead-Time claim fails against M1
+
+- **Scope:** Preregistered alarm-threshold calibration and the Lead-Time
+  secondary question, on Calibration only. Locked Test was never opened
+  (`locked_test_accessed=false`). Implemented as
+  `ops/calibration_alarm_18d6494.py`, executed in the frozen instance
+  environment (python 3.12.13, numpy 2.2.6, scikit-learn 1.9.0).
+- **Two protocol decisions fixed before running** (see the AMENDMENTS entry
+  "Fix the score source and failure step for alarm calibration"): the threshold
+  is calibrated on **group-out-of-fold calibrated probabilities**, never on
+  in-sample scores from the refit-on-all base model; and `t_failure` maps to
+  the annotation `onset_step`, never `confirmation_step`. Both are the
+  conservative direction. The frozen bundle retains only scalar OOF metrics, so
+  the per-row OOF vectors were reconstructed deterministically
+  (`_make_group_folds` uses no RNG) and bound to independently pinned anchors:
+  cohort digest `03c37788…5343ed`, predictor metadata `acecac7b…3adda7`,
+  calibration data `215e52cf…488986`, the recorded `fold_assignments`, the
+  recorded per-model `oof_metrics`, and the frozen Platt map. All anchors
+  reproduced exactly; the script fails closed otherwise.
+- **Independent review:** The score-source question and the finished script were
+  reviewed read-only by an independent model (Fable 5) before execution. That
+  review caught two blocking defects in the first draft: the cohort row list is
+  `provenance["rows"]`, not `provenance["records"]`; and base-init identifiers
+  must stay **`int`**, because `_canonical_identifier` hashes `10` and `"10"`
+  differently — with strings the data hash becomes `5c1c7c49…3a7ea1` instead of
+  the frozen `215e52cf…488986`. The script was rewritten to use the frozen
+  validated loader `load_feature_cohort`, which reproduces the exact fit-time
+  inputs and would have prevented both defects.
+- **Alarm thresholds** (episode-level FPR ≤ 10% over the 107 successful
+  episodes, alarm after k=3 consecutive exceedances, cadence 5). All three
+  models land on the same realised rate of 9.35% (10 of 107 successful
+  episodes):
+
+  | Model | threshold | realised episode FPR |
+  |---|---|---|
+  | M0 | 0.5716 | 9.35% |
+  | M1 | 0.4259 | 9.35% |
+  | M2 | 0.3874 | 9.35% |
+
+- **Lead time** (53 failed episodes, 18 init clusters, cluster bootstrap):
+
+  | Comparison | median lead (baseline → M2) | median paired difference | 90% interval | detection rate |
+  |---|---|---|---|---|
+  | **M2 vs M1** (preregistered) | 440.0 → 440.0 | **0.0** | [0.0, 0.0] | 100% → 100% |
+  | M2 vs M0 (secondary) | 395.0 → 440.0 | 85.0 | [60.0, 95.0] | 83.0% → 100% |
+
+  The preregistered internal lead-time claim requires a median paired
+  `(lead_M2 − lead_M1) ≥ 5` control steps (`PREREG.md:50`). Observed is **0.0
+  with a degenerate [0.0, 0.0] interval**: on Calibration, internal signals
+  raise the alarm on exactly the same control step as M1 in every failed
+  episode. The claim **fails**, and it fails cleanly rather than marginally.
+  Against M0 the picture is the familiar one: M2 alarms 85 steps earlier and
+  detects all 53 failures where M0 detects 83%.
+- **Important caveat on what "lead" means here:** 48 of the 53 failures are
+  `terminal_horizon` events, where onset equals confirmation equals the 520-step
+  horizon — the policy simply never finishes rather than committing an
+  identifiable failure. Only 5 are `irrecoverable_workspace_exit` with a genuine
+  earlier onset. A median lead of 440 steps therefore mostly means "it is
+  visible early that this episode will not succeed", not "an imminent failure
+  event was anticipated". The M2-versus-M1 null is unaffected by this caveat,
+  since both models are measured against identical failure steps.
+- **Convergent read-out:** Two independent preregistered Calibration criteria now
+  point the same way. Predictive lift M2 over M1 is 1.17% against a 3% threshold,
+  and lead-time gain M2 over M1 is 0.0 steps against a 5-step threshold. Both
+  large-looking gains (48.3% log loss, 85 steps) are M2-over-M0, i.e. internal
+  signals substituting for privileged simulator state rather than exceeding it.
+  This is the §12 row "lift only M2>M0, not M2>M1". These remain Calibration
+  values; the primary estimand is decided on the closed Locked Test.
+- **Backup:** The receipt `alarm-lead-time-summary.json`
+  (SHA-256 `ea93f872…30e7a2`) was copied off-instance and re-hashed locally to
+  the identical digest.
+- **Decision:** Do not adjust any threshold, feature, or model in response to
+  this result. Proceed to the remaining Calibration work — intervention-strength
+  calibration for the §8 causal protocol, which requires GPU — then the tracked
+  freeze and `calibration-locked-v1` tag before any Locked Test access.

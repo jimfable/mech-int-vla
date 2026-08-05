@@ -632,3 +632,54 @@ left to environment resolution.
   by requiring the rerun's predictor metadata to reproduce the `attempt-0001`
   values exactly.
 - **Implementing commit:** `b009029b84a48c4c1e1c44fbd48e0a33616557c7`
+
+### 2026-08-05 — Fix the score source and failure step for alarm calibration
+
+- **Prior protocol commit:** `f8bca592927260b8065049aa1af1bccdd1896795`
+- **Technical reason:** `PREREG.md:43-45` fixes the alarm threshold on Calibration
+  at an episode-level false-positive rate ≤ 10% among successful episodes, but it
+  does not name which predicted probabilities that rate is measured on. Two
+  sources exist: the base predictor refit on all Calibration rows, and
+  group-out-of-fold predictions. The fitted bundle retains only scalar OOF
+  metrics, not per-row OOF probabilities, so the source must be chosen and stated
+  explicitly rather than inherited from an artifact. Separately, `PREREG.md:47-49`
+  defines `t_failure` as "the first task-specific failure event when one can be
+  identified", and the annotation artifact exposes both an `onset_step` and a
+  later `confirmation_step`, so the mapping must also be stated.
+- **Exact change:** (1) Calibrate the alarm threshold on **group-out-of-fold
+  calibrated probabilities**, reconstructed deterministically from the frozen
+  cohort and the already-selected family/hyperparameters, never on in-sample
+  scores from the refit-on-all base model. This follows the protocol's existing
+  Calibration currency: the Platt calibrator is fit from group-out-of-fold
+  predictions (`PREREG.md:323-325`) and Kill Switch 1 is evaluated on
+  group-out-of-fold Calibration predictions (`PREREG.md:328`). The refit-on-all
+  model exists to be deployed on Locked Test, not to be evaluated in-sample.
+  The reconstruction is verified against four frozen anchors before use: the
+  recorded `fold_assignments`, the recorded per-model `oof_metrics`, the frozen
+  Platt slope/intercept, and `calibration_data_sha256`
+  (`215e52cf…488986`). `_make_group_folds` uses no RNG, so the fold partition is
+  a deterministic function of episodes and groups. (2) Map `t_failure` to
+  `onset_step`, not `confirmation_step`, as the first identifiable failure event.
+  The threshold calibration itself uses only successful episodes and therefore
+  needs no failure step; the mapping matters only for lead time.
+- **Affected hypotheses/metrics:** No estimand, split, feature, probe, seed, or
+  threshold value changes. This fixes how two already-preregistered quantities
+  are computed. Both choices are the conservative direction: in-sample scores
+  would push successful-episode probabilities toward zero and yield a threshold
+  that is too low, silently exceeding the 10% cap on Locked Test and inflating
+  detections for whichever model overfits more; `confirmation_step` would inflate
+  lead times because an alarm must fire strictly before the failure step.
+- **Outcome visibility:** All 160 Calibration rollouts and outcomes, the score
+  sidecars, the published Calibration features, and the M0/M1/M2 Calibration OOF
+  metrics were visible before this decision, including the 1.17% M2-over-M1
+  log-loss difference. The Calibration failure annotations (107 successes, 53
+  failures; 48 terminal-horizon, 5 irrecoverable workspace exits) were also
+  visible. No Locked Test path, artifact, label, or output was accessed.
+- **Bias risk and mitigation:** The risk is that a source is chosen after seeing
+  which one flatters the M2 lead-time result. It is mitigated by fixing both
+  choices before any alarm threshold or lead time is computed, by choosing the
+  conservative option in both cases, by deriving both from protocol text that
+  predates the results, and by binding the reconstruction to four frozen anchors
+  that fail closed on any mismatch. The choice was reviewed read-only by an
+  independent model (Fable 5) against the preregistration before implementation.
+- **Implementing commit:** `PENDING-BIND`

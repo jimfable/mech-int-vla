@@ -1818,3 +1818,40 @@ that experiments, negative results, decisions, and confidence can be audited.
   this result. Proceed to the remaining Calibration work — intervention-strength
   calibration for the §8 causal protocol, which requires GPU — then the tracked
   freeze and `calibration-locked-v1` tag before any Locked Test access.
+
+### 2026-08-05 17:45 CEST — CALIBRATION-BACKUP-COMPLETE-001: raw set fully secured, instance stopped
+
+- **Raw backup completed and verified:** The Calibration raw set is now fully
+  off-instance. All 400 remote files (14.6 GB) were transferred and then
+  independently re-hashed on both sides: every file is byte-identical, and the
+  remote-only set is empty. This closes the long-standing partial backup, which
+  had been stuck at 166 of 400 files since 2026-08-04.
+- **Failed first attempt, recorded:** The initial resume silently transferred
+  nothing. macOS ships rsync 2.6.9, which does not support `--info=stats2`; the
+  process printed a usage message and exited 0, so the wrapper reported success.
+  The corrected run used `--stats` instead. Lesson: a zero exit code from a
+  wrapped transfer is not evidence of transfer; the file count was.
+- **Legacy staging residue identified, not deleted:** The earlier partial backup
+  was written one directory level deeper (`./raw/calibration/...` rather than
+  `./calibration/...`), so it survives alongside the verified mirror as 166
+  extra files (~6 GB). Hashing shows 162 are exact duplicates of the verified
+  mirror and 4 are truncated fragments — one per each of the four parallel
+  streams Codex had been running, each smaller than its verified counterpart
+  (e.g. 9.5 MB against 42.2 MB for `init22-cell3`). The residue carries no
+  unique data. It is left in place pending an explicit decision rather than
+  removed autonomously.
+- **Instance stopped:** No scoring, alarm, or supervisor process was running.
+  Instance 46677323 is `stopped`/`exited`, still exists, and retains its 200 GB
+  disk. Every irreplaceable artifact — raw rollouts, score sidecars, features,
+  predictors, and all receipts — is now verified off-instance.
+- **Decision:** Next is the §8 causal protocol. Order deliberately puts the cheap
+  gate first: build Calibration candidate states and count how many valid
+  donor/recipient pairs exist under the frozen tolerances (phase, contact,
+  gripper opening 0.01, eef and object position 2 cm, normalized time 0.10, all
+  non-primary predicates, orientation difference 30-90 degrees) before spending
+  GPU time. `PREREG.md:356` declares patching inconclusive rather than negative
+  below 30 valid pairs, so the pair inventory can end the phase cheaply. Only
+  then calibrate the intervention strength alpha over {0.25, 0.5, 1.0}, choosing
+  the smallest value with the expected target-action sign and an off-manifold
+  rate ≤ 5%. The natural activation distribution needed for that off-manifold
+  reference is already present in the score sidecars and needs no new compute.

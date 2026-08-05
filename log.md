@@ -1641,3 +1641,104 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** Leave the authoritative coordinator, workers, and transfers
   unchanged. Continue read-only monitoring; do not stop the instance, inspect
   Locked Test, or launch any duplicate/reordered scorer.
+
+### 2026-08-05 13:50 CEST — CALIBRATION-FEATURE-FINALIZATION-001: finalizer defect repaired, Calibration features published
+
+- **Supervision gap:** The previous supervising agent's last observation was
+  `124/160` sidecars at 2026-08-04 20:54 UTC. The two workers then finished
+  normally (`60/60` each) and the execution receipt recorded
+  `status="scoring_complete"` with the full 160 authoritative sidecars. The
+  coordinator launched its unchanged-serial finalizer at 00:23 UTC, which
+  aborted at 01:31 UTC. The three following scheduled heartbeats (02:56, 05:57,
+  08:58 UTC) produced no supervising turn at all, so the abort went unobserved
+  for roughly ten hours while the instance sat idle at 0% GPU utilisation.
+- **Diagnosis (fail-closed, read-only first):** The finalizer log ended in
+  `AttributeError: 'FeatureCohort' object has no attribute 'metadata_sha256'`
+  raised at `calibration_score_18d6494.py:374` while assembling the final
+  summary. Everything expensive had already succeeded: all 160 sidecars were
+  revalidated, and the score-allocation receipt, feature reference bundle,
+  feature cohort, and fitted M0/M1/M2 predictors were written. The cause is a
+  name mismatch between sibling classes: `FeatureReferenceBundle` exposes
+  `metadata_sha256`, whereas the digest property of `FeatureCohort` is named
+  `provenance_sha256`, with an identical implementation
+  (`_metadata_sha256(self.to_metadata())`). Because the coordinator promotes the
+  authoritative feature root only after a staged summary exists, `attempt-0001`
+  stayed unpromoted and no authoritative feature artifact had been published.
+- **Provenance trap avoided:** The obvious repair — having
+  `write_feature_cohort` return its digest — would have modified
+  `src/mech_int_vla/feature_artifacts.py`, which is a member of
+  `SCORING_SOURCE_FILES`. That would have changed `scoring_source_sha256` and
+  broken the `code_sha256` guard against all 160 sidecars, which carry the old
+  digest. The fix was therefore confined to `ops/calibration_score_18d6494.py`,
+  which is not hashed into the provenance chain. No file entering
+  `scoring_source_sha256` was touched.
+- **Exact change and deployment:** One line, verified by byte-level diff:
+  `feature_cohort.metadata_sha256` → `feature_cohort.provenance_sha256`. The
+  corrected runner was deployed as a new file
+  `/workspace/runstate/calibration_score_18d6494_fix1.py`; the original runner
+  remains byte-identical at `6cf21bc2…98fd54`, so the frozen plan's
+  `serial_runner_sha256` stays true.
+- **Why the frozen wrapper could not be used:** `_assert_arguments_match_plan`
+  requires the runner hash recorded in the immutable plan, so the continuation
+  wrapper structurally refuses to launch a corrected runner. The finalizer step
+  was therefore executed directly using the plan's exact
+  `finalizer_command_prefix`, the identical locked environment (`PYTHONPATH`,
+  `MUJOCO_GL=egl`, offline HF flags, etc.), an exclusive `flock` on the plan's
+  global lock, and a fresh `finalizer-staging/attempt-0002/features` root. The
+  run took 71 minutes (09:32–10:43 UTC).
+- **Determinism independently confirmed:** `attempt-0002` reproduced
+  `attempt-0001` exactly. The cohort `arrays.npz`/`metadata.json`, the reference
+  bundle, the score-allocation receipt, and `predictors.json` are all
+  byte-identical across the two attempts, and the cohort publish digest is the
+  same `03c37788…5343ed`. The defect was thus purely in receipt assembly and
+  changed no scientific quantity.
+- **Guarded promotion:** The wrapper's post-run guards were reproduced
+  explicitly — staged `sidecar_count == 160`, `locked_test_accessed == false`,
+  destination absent, same filesystem — before promoting the staged root with
+  `renameat2(RENAME_NOREPLACE)` to
+  `/workspace/research-artifacts/analysis-staging/calibration-features-18d6494-001`.
+  `completion.json` was then written exclusively (SHA-256 `67ff46d1…d579ef`),
+  recording the direct-execution mode, both runner hashes, the single-line
+  diff, the reproduced guards, and the determinism result. `attempt-0001` was
+  preserved untouched as evidence. Locked Test remains closed and unaccessed
+  (`locked_test_accessed=false` throughout).
+- **Off-instance backup:** All 8 authoritative feature files (66 MB) were
+  copied to `artifacts/calibration-features-18d6494-001/` and independently
+  re-hashed; every file is byte-identical to the instance. Key receipts are
+  cohort `03c37788…5343ed`, reference `c8cad407…56949b`, score allocation
+  `e9a04dd4…17fb3` (self-verifying: hash equals directory name), predictors
+  metadata `acecac7b…3adda7`, and feature summary `2c46f770…3433ac8`. Direct-SSH
+  throughput measured ~1.9 MB/s, roughly twenty times the previously observed
+  proxy rate.
+- **First Calibration read-out (group-5-fold OOF, 160 episodes / 9,455 states /
+  20 base-init groups; shared family logistic regression, C=1.0, selected on M1
+  raw OOF log loss only):**
+
+  | Model | calibrated AUROC | calibrated log loss |
+  |---|---|---|
+  | M0 (output-only) | 0.7889 | 0.47464 |
+  | M1 (+ simulator state) | 0.9315 | 0.24832 |
+  | M2 (+ internal geometry) | 0.9317 | 0.24541 |
+
+  Relative log-loss improvement M1 over M0 is 47.68%; M2 over M0 is 48.30%;
+  **M2 over M1 is 1.17%**. The M2−M1 AUROC delta is +0.0002. Kill-Switch 1 is
+  **not** triggered (criterion: M0 or M1 calibrated group-OOF AUROC ≥ 0.95; M1
+  reached 0.9315, close to but below the threshold), so the preregistered
+  failure-mode order stands and no methodological switch is due.
+- **Interpretation and its limits:** These are Calibration out-of-fold values
+  used for model selection, **not** the primary estimand. The primary claim is
+  the paired out-of-sample log-loss difference M2 versus M1 on the Locked Test
+  Set, which remains closed. Read with that caveat, the pattern is nonetheless
+  informative and points at the "lift over M0 but not over M1" row of the §12
+  decision table: almost the entire predictive gain comes from privileged
+  simulator state, while internal geometry adds 1.17% — well below the
+  preregistered 3% threshold, and with an essentially unchanged AUROC. No
+  threshold, feature, or split was altered in response to seeing this.
+- **Decision:** Calibration scoring and feature finalization are complete and
+  backed up. Do not open Locked Test. Next preregistered steps are the
+  remaining Calibration-side calibration work — alarm thresholds at
+  episode-level FPR 10% with k=3 consecutive exceedances for the Lead-Time
+  secondary question, and intervention strength for the §8 causal protocol —
+  followed by a clean tracked freeze and the `calibration-locked-v1` tag before
+  any Locked Test access. The instance is stopped once the remaining
+  irreplaceable artifacts are secured; its disk is preserved.

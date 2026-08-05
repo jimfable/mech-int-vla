@@ -371,7 +371,7 @@ def main() -> int:
         "sidecar_count": len(sidecars),
         "reference_bundle_path": str(reference_path),
         "feature_cohort_path": str(cohort_path),
-        "feature_cohort_sha256": feature_cohort.metadata_sha256,
+        "feature_cohort_sha256": feature_cohort.provenance_sha256,
         "predictor_metadata_sha256": predictor_metadata_digest,
         "predictor_pickle_path": str(predictor_pickle_path),
         "predictor_pickle_sha256": predictor_pickle_digest,

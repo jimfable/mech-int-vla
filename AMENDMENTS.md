@@ -564,3 +564,71 @@ left to environment resolution.
   validation, residue rejection, exclusive flock acquisition, immutable hashes,
   and fail-closed fallback to the serial scorer mitigate those risks.
 - **Implementing commit:** `257309f64c60fc49a97babf6bc77603019ef1fb9`
+
+### 2026-08-05 — Complete Calibration feature finalization after a finalizer attribute defect
+
+- **Prior protocol commit:** `56e191d4f3fe5c6f6996948acfcb4ecaf61e7a39`
+- **Technical reason:** Raw Calibration scoring reached the full 160/160
+  authoritative sidecars (40 immutable serial plus 120 two-worker promotions)
+  and the execution receipt recorded `status="scoring_complete"`. The frozen
+  continuation coordinator then launched its unchanged-serial finalizer, which
+  validated all 160 sidecars, published the score-allocation receipt, the
+  feature reference bundle and cohort, and fitted the M0/M1/M2 failure
+  predictors. It aborted only while assembling the final summary, because
+  `calibration_score_18d6494.py` read `FeatureCohort.metadata_sha256` — an
+  attribute that does not exist. The digest property of `FeatureCohort` is
+  named `provenance_sha256`, while the sibling class `FeatureReferenceBundle`
+  exposes `metadata_sha256`. The defect is confined to receipt assembly and
+  never touched a sidecar, a score, or a feature array. Because the
+  coordinator promotes the authoritative feature root only after the staged
+  summary exists, `attempt-0001` remained unpromoted and no authoritative
+  feature artifact was published. The three scheduled heartbeats after the
+  abort produced no supervising turn, so the failure stayed unobserved until
+  this session.
+- **Exact change:** Correct the attribute to `FeatureCohort.provenance_sha256`,
+  the exact semantic counterpart of `FeatureReferenceBundle.metadata_sha256`
+  with an identical implementation (`_metadata_sha256(self.to_metadata())`).
+  The fix is applied only in `ops/calibration_score_18d6494.py`, which is not
+  a member of `SCORING_SOURCE_FILES`; no file entering `scoring_source_sha256`
+  is modified, so the provenance chain binding all 160 sidecars is unchanged.
+  The corrected runner is deployed to the instance as a new file
+  `calibration_score_18d6494_fix1.py`, leaving the original runner
+  byte-identical so the frozen plan's `serial_runner_sha256` remains true.
+  Because `_assert_arguments_match_plan` requires exactly that recorded runner
+  hash, the continuation wrapper can no longer launch the corrected runner.
+  The finalizer step is therefore executed directly, using the plan's exact
+  `finalizer_command_prefix`, the identical locked environment, an exclusive
+  `flock` on the plan's global lock, and a fresh
+  `finalizer-staging/attempt-0002/features` root. The wrapper's post-run guards
+  are reproduced explicitly: the staged summary must report
+  `sidecar_count == 160` and `locked_test_accessed == false` before the staged
+  root is promoted by a no-overwrite rename to the authoritative feature root,
+  followed by the completion receipt.
+- **Affected hypotheses/metrics:** None. No estimand, split, threshold, feature
+  schema, probe, seed, transformation, label, or statistical rule changes. The
+  160 score sidecars are untouched and remain immutable. The corrected line
+  only records a digest inside a receipt and cannot enter any M0/M1/M2 feature
+  or predictor input. Physical costs remain stratified by execution mode and
+  stay outside predictor inputs.
+- **Outcome visibility:** All 160 raw Calibration rollouts and outcomes, the
+  complete score sidecar set, the execution receipt, and the unpromoted
+  `attempt-0001` staging tree — including its fitted predictor metadata — were
+  visible before this decision. The Calibration M2-versus-M1 comparison was
+  read before this entry was written, so the entry is explicitly not blind to
+  it; it is recorded here rather than presented as a prior decision. No Locked
+  Test path, artifact, label, score, or protected-split output was accessed at
+  any point.
+- **Bias risk and mitigation:** The change is a defect correction in receipt
+  assembly, not an outcome-adaptive choice: the corrected digest is a property
+  of an already published cohort and cannot alter any prediction. Main risks
+  are an unnoticed second difference between the original and corrected runner,
+  silent divergence of the direct run from the frozen execution environment,
+  and loss of the wrapper's promotion guards. These are mitigated by a
+  byte-level diff proving exactly one changed line, an unmodified original
+  runner, reuse of the plan's exact command prefix and locked environment
+  variables, an exclusive global lock, a fresh staging attempt that never
+  overwrites `attempt-0001`, explicit reproduction of the staged-summary
+  guards, and a no-overwrite promotion. Determinism is verified independently
+  by requiring the rerun's predictor metadata to reproduce the `attempt-0001`
+  values exactly.
+- **Implementing commit:** `PENDING-BIND`

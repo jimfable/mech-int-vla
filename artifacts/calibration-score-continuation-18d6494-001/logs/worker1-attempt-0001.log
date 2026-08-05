@@ -1,0 +1,128 @@
+Reducing the number of VLM layers to 16 ...
+Loading weights from local directory
+[robosuite WARNING] No private macro file found! (__init__.py:7)
+WARNING:robosuite_logs:No private macro file found!
+[robosuite WARNING] It is recommended to use a private macro file (__init__.py:8)
+WARNING:robosuite_logs:It is recommended to use a private macro file
+[robosuite WARNING] To setup, run: python /venv/main/lib/python3.12/site-packages/robosuite/scripts/setup_macros.py (__init__.py:9)
+WARNING:robosuite_logs:To setup, run: python /venv/main/lib/python3.12/site-packages/robosuite/scripts/setup_macros.py
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 1, "episode_id": "libero_10-task5-calibration-init15-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 2, "episode_id": "libero_10-task5-calibration-init15-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 3, "episode_id": "libero_10-task5-calibration-init15-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 4, "episode_id": "libero_10-task5-calibration-init15-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 5, "episode_id": "libero_10-task5-calibration-init16-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 6, "episode_id": "libero_10-task5-calibration-init16-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 7, "episode_id": "libero_10-task5-calibration-init16-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 8, "episode_id": "libero_10-task5-calibration-init16-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 9, "episode_id": "libero_10-task5-calibration-init17-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 10, "episode_id": "libero_10-task5-calibration-init17-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 11, "episode_id": "libero_10-task5-calibration-init17-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 12, "episode_id": "libero_10-task5-calibration-init17-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 13, "episode_id": "libero_10-task5-calibration-init18-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 14, "episode_id": "libero_10-task5-calibration-init18-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 15, "episode_id": "libero_10-task5-calibration-init18-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 16, "episode_id": "libero_10-task5-calibration-init18-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 17, "episode_id": "libero_10-task5-calibration-init19-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 18, "episode_id": "libero_10-task5-calibration-init19-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 19, "episode_id": "libero_10-task5-calibration-init19-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 20, "episode_id": "libero_10-task5-calibration-init19-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 21, "episode_id": "libero_10-task5-calibration-init20-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 22, "episode_id": "libero_10-task5-calibration-init20-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 23, "episode_id": "libero_10-task5-calibration-init20-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 24, "episode_id": "libero_10-task5-calibration-init20-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 25, "episode_id": "libero_10-task5-calibration-init21-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 26, "episode_id": "libero_10-task5-calibration-init21-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 27, "episode_id": "libero_10-task5-calibration-init21-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 28, "episode_id": "libero_10-task5-calibration-init21-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 29, "episode_id": "libero_10-task5-calibration-init22-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 30, "episode_id": "libero_10-task5-calibration-init22-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 31, "episode_id": "libero_10-task5-calibration-init22-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 32, "episode_id": "libero_10-task5-calibration-init22-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 33, "episode_id": "libero_10-task5-calibration-init23-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 34, "episode_id": "libero_10-task5-calibration-init23-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 35, "episode_id": "libero_10-task5-calibration-init23-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 36, "episode_id": "libero_10-task5-calibration-init23-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 37, "episode_id": "libero_10-task5-calibration-init24-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 38, "episode_id": "libero_10-task5-calibration-init24-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 39, "episode_id": "libero_10-task5-calibration-init24-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 40, "episode_id": "libero_10-task5-calibration-init24-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 41, "episode_id": "libero_10-task5-calibration-init25-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 42, "episode_id": "libero_10-task5-calibration-init25-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 43, "episode_id": "libero_10-task5-calibration-init25-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 44, "episode_id": "libero_10-task5-calibration-init25-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 45, "episode_id": "libero_10-task5-calibration-init26-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 46, "episode_id": "libero_10-task5-calibration-init26-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 47, "episode_id": "libero_10-task5-calibration-init26-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 48, "episode_id": "libero_10-task5-calibration-init26-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 49, "episode_id": "libero_10-task5-calibration-init27-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 50, "episode_id": "libero_10-task5-calibration-init27-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 51, "episode_id": "libero_10-task5-calibration-init27-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 52, "episode_id": "libero_10-task5-calibration-init27-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 53, "episode_id": "libero_10-task5-calibration-init28-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 54, "episode_id": "libero_10-task5-calibration-init28-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 55, "episode_id": "libero_10-task5-calibration-init28-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 56, "episode_id": "libero_10-task5-calibration-init28-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 57, "episode_id": "libero_10-task5-calibration-init29-cell1", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 58, "episode_id": "libero_10-task5-calibration-init29-cell3", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 59, "episode_id": "libero_10-task5-calibration-init29-cell5", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}
+[info] using task orders [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+{"completed": 60, "episode_id": "libero_10-task5-calibration-init29-cell7", "kind": "two_worker_score_promoted", "total": 60, "worker_index": 1}

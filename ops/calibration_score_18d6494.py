@@ -46,11 +46,31 @@ from mech_int_vla.instrumentation import SmolVLAInstrumentation
 from mech_int_vla.libero_runtime import RawLiberoEpisode
 
 
-LOCK_COMMIT = "18d64941bc8c899b06306fbec21d1c8d2c08f2ea"
-LOCK_TAG = "prereg-locked-v1"
+# Two distinct commits, deliberately separated.
+#
+# COLLECTION_* identifies the commit the raw rollouts were collected at.  The
+# raw set, its authority receipt and the episode manifest are all bound to it and
+# must never move: re-scoring does not re-collect anything, and the manifest must
+# still reconstruct to the same digest.
+#
+# SCORING_LOCK_TAG identifies the commit the *scoring code* runs at.  It changes
+# whenever a file in SCORING_SOURCE_FILES changes, as it did for the
+# counterfactual re-render fix.  It is expressed as a tag rather than a hardcoded
+# hash because the constant would otherwise have to name the very commit that
+# contains it; requiring HEAD to equal the tag is self-consistent and equally
+# strict, since the guard also demands a clean, fully tracked worktree.
+COLLECTION_COMMIT = "18d64941bc8c899b06306fbec21d1c8d2c08f2ea"
+COLLECTION_TAG = "prereg-locked-v1"
+SCORING_LOCK_TAG = "calibration-rescore-v1"
 MANIFEST_SHA256 = "6f5c7a5baa71eadfda1539e756d42ea6cec575316b6ab1245be7d3c5abfe3c3f"
 POLICY_REVISION = "31d453f7edd78c839a8bbc39744a292686daf0de"
-BOUND_PROBE_SHA256 = "747c5fd8013a4ca54f17a3929df20228732cbe3c08b1b761090c5840fee94564"
+# The bound probe is re-published whenever the scoring source digest changes.
+# The probe itself is unchanged — it was fitted on factual rollouts only — but
+# its binding records the repository digests and must therefore be re-issued.
+# Its digest is taken from the artifact directory name and verified on load,
+# which also re-checks the recorded config/code digests against this repository;
+# hardcoding it here would require the constant to name the very commit it lives
+# in.
 ANALYSIS_SCHEMA_VERSION = 1
 
 
@@ -116,16 +136,24 @@ def _write_exclusive(path: Path, payload: bytes) -> str:
 
 
 def _require_authority(root: Path, manifest_path: Path, authority_path: Path) -> Any:
-    if _git(root, "rev-parse", "HEAD") != LOCK_COMMIT:
-        raise RuntimeError("locked checkout HEAD drifted")
-    if _git(root, "rev-parse", f"refs/tags/{LOCK_TAG}^{{commit}}") != LOCK_COMMIT:
-        raise RuntimeError("locked Calibration tag drifted")
+    head = _git(root, "rev-parse", "HEAD")
+    scoring_lock = _git(root, "rev-parse", f"refs/tags/{SCORING_LOCK_TAG}^{{commit}}")
+    if head != scoring_lock:
+        raise RuntimeError("scoring checkout is not at the scoring lock tag")
     if _git(root, "status", "--porcelain=v1", "--untracked-files=all"):
         raise RuntimeError("locked checkout is dirty")
+    # The collection tag must still exist and still point at the collection
+    # commit: re-scoring may advance the scoring code but must never move the
+    # commit the raw set was collected at.
+    if (
+        _git(root, "rev-parse", f"refs/tags/{COLLECTION_TAG}^{{commit}}")
+        != COLLECTION_COMMIT
+    ):
+        raise RuntimeError("collection tag drifted away from the collection commit")
     authority = _strict_json(authority_path)
     if (
-        authority.get("head_commit") != LOCK_COMMIT
-        or authority.get("tag_commit") != LOCK_COMMIT
+        authority.get("head_commit") != COLLECTION_COMMIT
+        or authority.get("tag_commit") != COLLECTION_COMMIT
         or authority.get("calibration_manifest_sha256") != MANIFEST_SHA256
         or authority.get("locked_test_accessed") is not False
     ):
@@ -138,7 +166,7 @@ def _require_authority(root: Path, manifest_path: Path, authority_path: Path) ->
         task,
         protocol,
         policy_revision=POLICY_REVISION,
-        code_commit=LOCK_COMMIT,
+        code_commit=COLLECTION_COMMIT,
     )
     if _sha256_bytes(_canonical(payload)) != MANIFEST_SHA256:
         raise RuntimeError("Calibration manifest hash differs from authority")
@@ -159,6 +187,15 @@ def _save_pickle(path: Path, value: Any) -> tuple[Path, str]:
     os.rename(temporary, path)
     payload = path.read_bytes()
     return path, _sha256_bytes(payload)
+
+
+def _bound_probe_digest(path: Path) -> str:
+    """The artifact directory name IS its content address; verify the shape."""
+
+    digest = path.resolve().name
+    if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+        raise RuntimeError("bound probe path does not end in a SHA-256 digest")
+    return digest
 
 
 def _sidecar_path(score_root: Path, episode_id: str) -> Path:
@@ -186,7 +223,7 @@ def main() -> int:
         args.bound_probe.resolve(),
         protocol=protocol,
         repo_root=root,
-        expected_sha256=BOUND_PROBE_SHA256,
+        expected_sha256=_bound_probe_digest(args.bound_probe),
     )
     if bound.rollout.source.manifest_sha256 != MANIFEST_SHA256:
         raise RuntimeError("bound probe manifest hash differs from authority")

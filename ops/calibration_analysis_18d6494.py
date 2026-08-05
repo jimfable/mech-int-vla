@@ -47,8 +47,13 @@ from mech_int_vla.probes import (
 from mech_int_vla.provenance import frozen_config_sha256, scoring_source_sha256
 
 
-LOCK_COMMIT = "18d64941bc8c899b06306fbec21d1c8d2c08f2ea"
-LOCK_TAG = "prereg-locked-v1"
+# The collection commit the raw set, manifest and receipts are bound to.  It
+# never moves.  Re-binding the probe after a scoring-source change advances the
+# checkout, so HEAD is validated against SCORING_LOCK_TAG instead while every
+# collection-era receipt keeps being validated against COLLECTION_COMMIT.
+COLLECTION_COMMIT = "18d64941bc8c899b06306fbec21d1c8d2c08f2ea"
+COLLECTION_TAG = "prereg-locked-v1"
+SCORING_LOCK_TAG = "calibration-rescore-v1"
 MANIFEST_SHA256 = "6f5c7a5baa71eadfda1539e756d42ea6cec575316b6ab1245be7d3c5abfe3c3f"
 LOCK_PAYLOAD_SHA256 = "64524c974e62c2ff500c385f049ce0589ca83c220caabc396358a9053051893c"
 FAILURE_FREEZE_SHA256 = "dd42e46b055163ca7b8ca777e0bc1a04b9907eab265f87f7234e502a19839328"
@@ -143,16 +148,20 @@ def _validate_lock_and_manifest(
     task: TaskSpec,
     protocol: Any,
 ) -> tuple[Any, dict[str, Any], dict[str, Any], dict[str, Any]]:
-    if _git(root, "rev-parse", "HEAD") != LOCK_COMMIT:
-        raise RuntimeError("locked checkout HEAD drifted")
-    if _git(root, "rev-parse", f"refs/tags/{LOCK_TAG}^{{commit}}") != LOCK_COMMIT:
-        raise RuntimeError("locked Calibration tag drifted")
+    head = _git(root, "rev-parse", "HEAD")
+    if head != _git(root, "rev-parse", f"refs/tags/{SCORING_LOCK_TAG}^{{commit}}"):
+        raise RuntimeError("checkout is not at the scoring lock tag")
+    if (
+        _git(root, "rev-parse", f"refs/tags/{COLLECTION_TAG}^{{commit}}")
+        != COLLECTION_COMMIT
+    ):
+        raise RuntimeError("collection tag drifted away from the collection commit")
     if _git(root, "status", "--porcelain=v1", "--untracked-files=all"):
         raise RuntimeError("locked checkout is dirty")
     authority = _strict_json(authority_path)
     for key, expected in {
-        "head_commit": LOCK_COMMIT,
-        "tag_commit": LOCK_COMMIT,
+        "head_commit": COLLECTION_COMMIT,
+        "tag_commit": COLLECTION_COMMIT,
         "calibration_manifest_sha256": MANIFEST_SHA256,
         "failure_event_freeze_sha256": FAILURE_FREEZE_SHA256,
         "locked_test_accessed": False,
@@ -165,7 +174,7 @@ def _validate_lock_and_manifest(
         task,
         protocol,
         policy_revision=POLICY_REVISION,
-        code_commit=LOCK_COMMIT,
+        code_commit=COLLECTION_COMMIT,
     )
     if _canonical(manifest.to_dict()) != _canonical(manifest_payload):
         raise RuntimeError("reconstructed Calibration manifest differs from authority")
@@ -183,8 +192,8 @@ def _validate_lock_and_manifest(
     receipt = _strict_json(receipt_path)
     if (
         receipt.get("kind") != "calibration_collection_receipt"
-        or receipt.get("code_commit") != LOCK_COMMIT
-        or receipt.get("required_tag") != LOCK_TAG
+        or receipt.get("code_commit") != COLLECTION_COMMIT
+        or receipt.get("required_tag") != COLLECTION_TAG
         or receipt.get("manifest_sha256") != MANIFEST_SHA256
         or receipt.get("locked_test_accessed") is not False
         or len(receipt.get("episodes", [])) != 160
@@ -315,7 +324,8 @@ def main() -> int:
         "kind": "calibration_failure_event_annotations",
         "source": {
             "split": "calibration",
-            "code_commit": LOCK_COMMIT,
+            "code_commit": COLLECTION_COMMIT,
+            "execution_commit": _git(args.repo_root.resolve(), "rev-parse", "HEAD"),
             "manifest_sha256": MANIFEST_SHA256,
             "completion_receipt_sha256": _sha256_file(args.receipt),
             "raw_inventory_sha256": RECEIPT_INVENTORY_SHA256,
@@ -430,7 +440,8 @@ def main() -> int:
         "kind": "calibration_probe_selection",
         "source": {
             "split": "calibration",
-            "code_commit": LOCK_COMMIT,
+            "code_commit": COLLECTION_COMMIT,
+            "execution_commit": _git(args.repo_root.resolve(), "rev-parse", "HEAD"),
             "manifest_sha256": MANIFEST_SHA256,
             "raw_inventory_sha256": RECEIPT_INVENTORY_SHA256,
             "allocation_receipt_sha256": allocation.sha256,

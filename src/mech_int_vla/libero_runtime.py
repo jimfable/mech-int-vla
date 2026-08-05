@@ -767,6 +767,52 @@ def _copy_observation(value: Any) -> Any:
     return copy.deepcopy(value)
 
 
+_OBSERVABLE_SAMPLING_FIELDS = (
+    "_time_since_last_sample",
+    "_current_delay",
+    "_current_observed_value",
+    "_sampled",
+)
+
+
+@contextlib.contextmanager
+def _preserved_observable_sampling(backend: Any) -> Iterator[None]:
+    """Restore robosuite observable sampling state around a non-advancing read.
+
+    ``_get_observations(force_update=True)`` calls ``_update_observables(force=True)``,
+    which advances every observable's ``_time_since_last_sample`` by one model
+    timestep *without* advancing the simulation, and refills ``_obs_cache``.  A
+    replay performs an arbitrary number of such non-advancing reads per scored
+    state, so leaving the timers advanced shifts the sampling phase of the next
+    real ``step`` and makes the replayed trajectory drift away from the recorded
+    rollout.  Snapshotting and restoring the sampling state keeps a forced read
+    observationally pure: it reports the current simulator state and leaves no
+    trace behind.
+    """
+
+    observables = getattr(backend, "_observables", None)
+    if observables is None:
+        raise LiberoRuntimeError("LIBERO backend exposes no observables to preserve")
+    saved = {
+        name: tuple(
+            copy.deepcopy(getattr(observable, field))
+            for field in _OBSERVABLE_SAMPLING_FIELDS
+        )
+        for name, observable in observables.items()
+    }
+    saved_cache = _copy_observation(getattr(backend, "_obs_cache", {}))
+    try:
+        yield
+    finally:
+        for name, observable in observables.items():
+            for field, value in zip(_OBSERVABLE_SAMPLING_FIELDS, saved[name]):
+                setattr(observable, field, value)
+        cache = getattr(backend, "_obs_cache", None)
+        if cache is not None:
+            cache.clear()
+            cache.update(saved_cache)
+
+
 class RawLiberoEpisode:
     """Own one raw LeRobot LIBERO environment and preserve terminal state."""
 
@@ -815,8 +861,21 @@ class RawLiberoEpisode:
             validity,
         )
 
-    def _raw_observation(self) -> Mapping[str, Any]:
-        return _backend(self.wrapper)._get_observations()
+    def _raw_observation(self, *, force_update: bool = False) -> Mapping[str, Any]:
+        """Return the backend observation, optionally forcing a fresh sample.
+
+        robosuite serves cached observable values that are refreshed only inside
+        ``step``/``reset``.  Any read taken after a direct simulator edit must
+        pass ``force_update=True``, otherwise it silently reports the pre-edit
+        state and the counterfactual becomes a no-op.  The forced read is wrapped
+        so that it leaves the observable sampling state untouched.
+        """
+
+        backend = _backend(self.wrapper)
+        if not force_update:
+            return backend._get_observations()
+        with _preserved_observable_sampling(backend):
+            return _copy_observation(backend._get_observations(force_update=True))
 
     def _format_observation(self, raw: Mapping[str, Any]) -> Mapping[str, Any]:
         return self.wrapper._format_raw_obs(raw)
@@ -836,7 +895,9 @@ class RawLiberoEpisode:
 
         if self.primary_object_name is None or not self._has_reset:
             raise LiberoRuntimeError("episode has not been reset")
-        return self._trace_frame(_copy_observation(self._raw_observation()))
+        return self._trace_frame(
+            _copy_observation(self._raw_observation(force_update=True))
+        )
 
     def photometric_observation(
         self, raw: Mapping[str, Any], *, multiplier: float
@@ -875,7 +936,7 @@ class RawLiberoEpisode:
             if reasons:
                 yield CounterfactualObservation(False, reasons, None, None)
             else:
-                raw = _copy_observation(self._raw_observation())
+                raw = _copy_observation(self._raw_observation(force_update=True))
                 yield CounterfactualObservation(
                     True,
                     (),
@@ -957,7 +1018,11 @@ class RawLiberoEpisode:
             raw, _, _, _ = _offscreen(self.wrapper).step(NOOP_ACTION.copy())
             settle_actions.append(tuple(float(value) for value in NOOP_ACTION))
         if raw is None:
-            raw = self._raw_observation()
+            # Unreachable while the protocol mandates settle steps, but a forced
+            # read is the only safe default here: this point follows a direct
+            # condition edit, so a cached observation would report the pre-edit
+            # state.
+            raw = self._raw_observation(force_update=True)
         self.post_settle_start_position = primary_object_pose(
             self.wrapper, self.primary_object_name
         )[0]

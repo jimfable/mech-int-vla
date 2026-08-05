@@ -425,3 +425,31 @@ def test_brightness_formula_updates_both_uint8_cameras() -> None:
         bright.camera_images["robot0_eye_in_hand_image"],
         np.asarray([[[3, 5, 255]]], dtype=np.uint8),
     )
+
+
+def test_inert_transform_is_rejected_before_publication(tmp_path: Path) -> None:
+    """Regression: a counterfactual that never reaches the policy must fail closed.
+
+    This reproduces the 2026-08-05 defect in miniature. The simulator edit is
+    applied, but the observation handed to the policy is the stale pre-edit one,
+    so the transformed actions and activations come out bit-identical to the
+    factual rollout and every derived drift feature is silently constant.
+    """
+
+    class StaleObservationAdapter(FakeAdapter):
+        def current_frame(self) -> ReplayFrame:
+            assert self.transform is not None
+            if self.transform.family == "camera_render":
+                return _frame(self.index)  # pre-edit observation, as if cached
+            return super().current_frame()
+
+    with pytest.raises(scoring.ScoringValidationError, match="never reached the policy input"):
+        _run(tmp_path, StaleObservationAdapter(_replay()))
+
+
+def test_healthy_transforms_pass_the_inertness_guard(tmp_path: Path) -> None:
+    """The guard must not fire on a correctly applied set of transforms."""
+
+    result = _run(tmp_path, FakeAdapter(_replay()))
+    loaded = load_scoring_sidecar(result.path)
+    assert loaded.arrays["transform_available"].shape[1] == len(FROZEN_TRANSFORMS)

@@ -1015,6 +1015,10 @@ def score_replay_to_sidecar(
         width=width,
         queue_checked=queue_accessible,
     )
+    # Validate before publishing, not only on load: a defect caught here costs
+    # one episode, while the same defect caught at load time costs a full
+    # scoring run.
+    _validate_arrays(metadata, arrays)
     path, digest = _write_sidecar_atomically(
         parent=parent,
         destination=destination,
@@ -1546,6 +1550,49 @@ def _validate_arrays(
                 raise ScoringValidationError(
                     f"{name} logical byte cost disagrees with activation width"
                 )
+    _reject_inert_transforms(arrays)
+
+
+def _reject_inert_transforms(arrays: Mapping[str, NDArray[Any]]) -> None:
+    """Fail closed when a counterfactual transform changed nothing at all.
+
+    Every frozen transform alters the policy input by construction, so with the
+    shared noise draws and a deterministic policy the transformed actions and
+    activations can never be bit-identical to the factual ones across a whole
+    episode.  Exact equality means the transform was not applied to what the
+    policy actually saw.  That failure mode is otherwise invisible: it produces
+    perfectly finite, schema-valid, mask-consistent arrays whose derived drift
+    and equivariance features are silently constant.
+
+    Checked per episode rather than per state, so a single genuinely insensitive
+    state cannot trip it.
+    """
+
+    original_actions = arrays["original_actions"][:, :COMMON_DRAWS]
+    original_activation = arrays["original_activation"][:, :COMMON_DRAWS]
+    mask = arrays["transform_available"].astype(bool)
+    for index, transform in enumerate(FROZEN_TRANSFORMS):
+        available = mask[:, index]
+        if not available.any():
+            continue
+        # A transform that reached the policy must move at least one of the two
+        # recorded outputs.  Requiring both would be wrong: a small edit can
+        # leave the quantised activation untouched while still moving actions,
+        # and vice versa.  Only "nothing changed at all" proves the policy saw
+        # an identical input.
+        actions_equal = np.array_equal(
+            arrays["transformed_actions"][available, index], original_actions[available]
+        )
+        activation_equal = np.array_equal(
+            arrays["transformed_activation"][available, index],
+            original_activation[available],
+        )
+        if actions_equal and activation_equal:
+            raise ScoringValidationError(
+                f"transform {transform.name} produced actions and activations "
+                "bit-identical to the factual rollout in every available state; "
+                "the counterfactual never reached the policy input"
+            )
 
 
 __all__ = [

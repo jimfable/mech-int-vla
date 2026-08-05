@@ -332,6 +332,23 @@ def _torch_module() -> Any:
     return torch
 
 
+def _noise_key(noise: Any) -> bytes:
+    """Content address for one noise draw.
+
+    The original-activation cache must be keyed by what the draw *is*, not by
+    which object currently holds it.  Keying by ``id()`` ties correctness to
+    caller-side lifetime: once a noise tensor is released its id may be reused,
+    and an intervention would then be measured against a different draw's
+    original activation without raising anything.  Draws are tiny
+    ``(1, 50, action_dim)`` float32 tensors, so hashing their bytes is cheap.
+    """
+
+    array = np.ascontiguousarray(
+        noise.detach().cpu().numpy(), dtype=np.float32
+    )
+    return hashlib.sha256(array.tobytes()).digest()
+
+
 def _clone_batch(value: Any) -> Any:
     clone = getattr(value, "detach", None)
     if callable(clone) and callable(getattr(value, "clone", None)):
@@ -472,7 +489,10 @@ class SmolVLAScoringAdapter:
         self._validate_bound_probe(protocol, repo_root)
         self.expected_content_links = self._content_links(repo_root, protocol)
         self._active_transform: ScoringTransform | None = None
-        self._original_activation_by_noise: dict[int, Any] = {}
+        # Keyed by noise *content*, not id(): keying by identity silently
+        # couples correctness to caller-side tensor lifetime, and a recycled
+        # id would intervene against the wrong original without any error.
+        self._original_activation_by_noise: dict[bytes, Any] = {}
         self._peak_baseline: int | None = None
         self._validate_runtime()
         torch = _torch_module()
@@ -1002,7 +1022,7 @@ class SmolVLAScoringAdapter:
         patched = intervention_degrees is not None
         queue_before = self.policy_queue_state()
         if patched:
-            original = self._original_activation_by_noise.get(id(noise))
+            original = self._original_activation_by_noise.get(_noise_key(noise))
             if original is None:
                 raise ScoringRuntimeError(
                     "intervention has no cached original for this noise identity"
@@ -1066,7 +1086,7 @@ class SmolVLAScoringAdapter:
             activation = activation_tensor.numpy().astype(np.float32, copy=True)
             if not patched:
                 self._original_activation_by_noise.setdefault(
-                    id(noise), activation_tensor.clone()
+                    _noise_key(noise), activation_tensor.clone()
                 )
         finally:
             self.timer.record_event(end_event)

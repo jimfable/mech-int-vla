@@ -25,6 +25,7 @@ from mech_int_vla.libero_runtime import (
     restore_simulator_snapshot,
     temporary_condition,
 )
+from mech_int_vla.libero_runtime import _preserved_observable_sampling
 
 ROOT = Path(__file__).parents[1]
 
@@ -92,6 +93,51 @@ class FakeObjectState:
         }
 
 
+class FakeObservable:
+    """Faithful copy of robosuite 1.4.0 ``Observable.update`` timing semantics.
+
+    Reproducing this exactly matters: a fake that zeroes the sampling timer on a
+    forced update makes the "forced reads leave no trace" assertion vacuous,
+    which is how the original stale-observation defect escaped the test suite.
+    robosuite advances the timer on every update and rewinds it only modulo the
+    sampling period, so a forced read is observable in the timer.
+    """
+
+    def __init__(self, name, sensor, initial, sampling_timestep: float = 0.05) -> None:
+        self.name = name
+        self._sensor = sensor
+        self._delayer = lambda: 0.0  # robosuite installs NO_DELAY for LIBERO
+        self._sampling_timestep = sampling_timestep
+        self._time_since_last_sample = 0.0
+        self._current_delay = 0.0
+        self._current_observed_value = initial
+        self._sampled = False
+
+    def update(self, timestep: float, obs_cache: dict, force: bool = False) -> None:
+        self._time_since_last_sample += timestep
+        due = (
+            not self._sampled
+            and self._sampling_timestep - self._current_delay
+            >= self._time_since_last_sample
+        )
+        if due or force:
+            self._current_observed_value = self._sensor()
+            obs_cache[self.name] = np.array(self._current_observed_value)
+            self._sampled = True
+            self._current_delay = self._delayer()
+        if self._time_since_last_sample >= self._sampling_timestep:
+            if not self._sampled:
+                self._current_observed_value = self._sensor()
+                obs_cache[self.name] = np.array(self._current_observed_value)
+                self._current_delay = self._delayer()
+            self._time_since_last_sample %= self._sampling_timestep
+            self._sampled = False
+
+    @property
+    def obs(self):
+        return self._current_observed_value
+
+
 class FakeBackend:
     def __init__(self) -> None:
         self.sim = FakeSim()
@@ -112,15 +158,58 @@ class FakeBackend:
         self.robots = [types.SimpleNamespace(gripper=gripper)]
         self.grasped = False
         self.placed = False
+        # robosuite-like observable plumbing: cached values plus sampling timers.
+        self.model_timestep = 0.002
+        self._obs_cache: dict[str, np.ndarray] = {}
+        self._observables = {
+            name: FakeObservable(name, lambda n=name: self._sense()[n], value)
+            for name, value in self._sense().items()
+        }
 
-    def _get_observations(self):
+    def _sense(self) -> dict[str, np.ndarray]:
+        """Read the *live* simulator state, the way a real sensor would.
+
+        The rendered image encodes the primary object pose so that a direct
+        simulator edit is observable only through a genuine re-render.
+        """
+
+        def encode(values: np.ndarray) -> np.ndarray:
+            # Fine-grained so that small pose/camera edits remain visible.
+            scaled = np.asarray(values, dtype=np.float64).ravel()[:3] * 1e4
+            return (np.abs(scaled).astype(np.int64) % 256).astype(np.uint8)
+
+        qpos = np.asarray(self.sim.data.qpos["book_free"], dtype=np.float64)
+        image = np.zeros((2, 2, 3), dtype=np.uint8)
+        image[0, 0, :] = encode(qpos[:3])
+        image[0, 1, :] = encode(qpos[3:7])
+        image[1, 0, :] = encode(self.sim.model.cam_pos)
+        image[1, 1, :] = encode(self.sim.model.cam_quat)
         return {
-            "agentview_image": np.zeros((2, 2, 3), dtype=np.uint8),
-            "robot0_eye_in_hand_image": np.zeros((2, 2, 3), dtype=np.uint8),
+            "agentview_image": image,
+            "robot0_eye_in_hand_image": image.copy(),
             "robot0_eef_pos": np.asarray([0.0, 0.0, 1.0]),
             "robot0_eef_quat": np.asarray([0.0, 0.0, 0.0, 1.0]),
             "robot0_gripper_qpos": np.asarray([0.02, 0.02]),
             "robot0_gripper_qvel": np.asarray([0.0, 0.0]),
+        }
+
+    def _update_observables(self, force: bool = False) -> None:
+        for observable in self._observables.values():
+            observable.update(
+                timestep=self.model_timestep, obs_cache=self._obs_cache, force=force
+            )
+
+    def _get_observations(self, force_update: bool = False):
+        """Serve CACHED observable values unless a refresh is forced.
+
+        This is the semantics that hid a severe defect: a simulator edit made
+        without a forced refresh is invisible here, exactly as in robosuite.
+        """
+
+        if force_update:
+            self._update_observables(force=True)
+        return {
+            name: observable.obs for name, observable in self._observables.items()
         }
 
     def _eval_predicate(self, state) -> bool:
@@ -167,6 +256,10 @@ class FakeOffscreen:
         self.env.sim.data.time += 0.05
         if self.success_after is not None and self.steps >= self.success_after:
             self.env.placed = True
+        # robosuite advances observables once per model sub-step inside step():
+        # 25 sub-steps of 0.002 s make up one 0.05 s control step.
+        for _ in range(25):
+            self.env._update_observables(force=False)
         return self.env._get_observations(), 1.0, self.env.placed, {}
 
 
@@ -424,3 +517,157 @@ def test_exact_raw_libero_constructor_is_lazy(monkeypatch) -> None:
     assert captured["observation_width"] == captured["observation_height"] == 360
     assert captured["num_steps_wait"] == 0
     assert captured["control_mode"] == "relative"
+
+
+def _observable_sampling_state(wrapper: FakeWrapper) -> dict[str, tuple]:
+    """Every mutable field a forced update touches, so a partial restore fails."""
+
+    return {
+        name: (
+            observable._time_since_last_sample,
+            observable._current_delay,
+            observable._sampled,
+            np.asarray(observable._current_observed_value).copy().tobytes(),
+        )
+        for name, observable in wrapper.backend._observables.items()
+    }
+
+
+def test_counterfactual_observation_reflects_the_simulator_edit() -> None:
+    """Regression: camera and object counterfactuals must not be silent no-ops.
+
+    A prior defect served cached robosuite observables after a direct simulator
+    edit, so camera and object-pose counterfactuals returned bit-identical
+    observations and every downstream drift/equivariance feature was constant.
+    The simulator state changed; only the rendered observation did not.
+    """
+
+    protocol = load_protocol_config(ROOT / "configs")
+    for condition in (
+        ConditionSpec("yaw", "object_pose", parameters={"yaw": 15}),
+        ConditionSpec("camera", "camera_render", parameters={"yaw": 3, "lateral_m": 0.0}),
+    ):
+        wrapper = FakeWrapper()
+        runtime = RawLiberoEpisode(
+            wrapper,
+            protocol.task_order.tasks[0],
+            protocol.split.policy_execution,
+            protocol.perturbations.validity,
+        )
+        runtime.reset(seed=101000, condition=ConditionSpec("iid", "iid"))
+        factual = runtime.current_raw_trace().raw_observation["agentview_image"].copy()
+        with runtime.counterfactual_observation(condition) as counterfactual:
+            assert counterfactual.available
+            assert counterfactual.raw_observation is not None
+            counterfactual_image = counterfactual.raw_observation["agentview_image"]
+            assert not np.array_equal(counterfactual_image, factual), (
+                f"{condition.family} counterfactual observation is identical to the "
+                "factual one; the edit was not re-rendered"
+            )
+            assert not np.array_equal(
+                runtime.current_raw_trace().raw_observation["agentview_image"],
+                factual,
+            )
+        restored = runtime.current_raw_trace().raw_observation["agentview_image"]
+        assert np.array_equal(restored, factual)
+
+
+def test_forced_observation_read_leaves_no_sampling_trace() -> None:
+    """Regression: a non-advancing forced read must not shift the sampling phase.
+
+    ``_get_observations(force_update=True)`` advances every observable's sampling
+    timer without advancing the simulation.  Replay scoring performs an arbitrary
+    number of such reads per state, so an unrestored timer would desynchronise
+    the replay from the recorded rollout.
+    """
+
+    protocol = load_protocol_config(ROOT / "configs")
+    wrapper = FakeWrapper()
+    runtime = RawLiberoEpisode(
+        wrapper,
+        protocol.task_order.tasks[0],
+        protocol.split.policy_execution,
+        protocol.perturbations.validity,
+    )
+    runtime.reset(seed=101000, condition=ConditionSpec("iid", "iid"))
+
+    # Advance to a mid-period timer so the assertion cannot pass trivially at 0.0.
+    runtime.step(np.zeros(7, dtype=np.float32))
+    for observable in wrapper.backend._observables.values():
+        observable.update(timestep=0.002, obs_cache=wrapper.backend._obs_cache)
+    assert any(
+        observable._time_since_last_sample > 0.0
+        for observable in wrapper.backend._observables.values()
+    ), "test setup failed: timers are all zero, the assertion would be vacuous"
+
+    before = _observable_sampling_state(wrapper)
+    cache_before = {
+        key: np.asarray(value).copy()
+        for key, value in wrapper.backend._obs_cache.items()
+    }
+    for _ in range(7):
+        runtime.current_raw_trace()
+    yaw = ConditionSpec("yaw", "object_pose", parameters={"yaw": 15})
+    with runtime.counterfactual_observation(yaw) as counterfactual:
+        assert counterfactual.available
+    after = _observable_sampling_state(wrapper)
+
+    assert after == before, "forced reads shifted the observable sampling state"
+    assert set(wrapper.backend._obs_cache) == set(cache_before)
+    for key, value in cache_before.items():
+        assert np.array_equal(wrapper.backend._obs_cache[key], value)
+
+
+def test_raw_observation_without_force_serves_the_cache() -> None:
+    """The fake backend must reproduce robosuite's caching, or it hides defects."""
+
+    wrapper = FakeWrapper()
+    backend = wrapper.backend
+    backend._update_observables(force=True)
+    cached = backend._get_observations()["agentview_image"].copy()
+    backend.sim.data.qpos["book_free"][0] += 0.5
+    backend.sim.forward()
+    assert np.array_equal(backend._get_observations()["agentview_image"], cached)
+    fresh = backend._get_observations(force_update=True)["agentview_image"]
+    assert not np.array_equal(fresh, cached)
+
+
+def test_preserved_observable_sampling_restores_every_mutable_field() -> None:
+    """Directly pin the contract of the preservation context manager.
+
+    ``_current_delay`` and ``_sampled`` cannot drift under LIBERO's frozen
+    configuration (robosuite installs NO_DELAY, and the sampling logic re-samples
+    immediately after each period wrap), so an end-to-end test cannot observe
+    them.  They are still restored defensively, and this test pins that contract
+    so a future delayer or sampling-rate change cannot silently break it.
+    """
+
+    backend = FakeBackend()
+    sentinel = {
+        name: (0.031, 0.007, False, np.full_like(np.asarray(obs.obs), 3))
+        for name, obs in backend._observables.items()
+    }
+    for name, observable in backend._observables.items():
+        timer, delay, sampled, value = sentinel[name]
+        observable._time_since_last_sample = timer
+        observable._current_delay = delay
+        observable._sampled = sampled
+        observable._current_observed_value = value
+    backend._obs_cache.clear()
+    backend._obs_cache["marker"] = np.asarray([42])
+
+    with _preserved_observable_sampling(backend):
+        backend._get_observations(force_update=True)
+        # Inside the block the forced update is visible.
+        assert any(
+            observable._sampled for observable in backend._observables.values()
+        )
+
+    for name, observable in backend._observables.items():
+        timer, delay, sampled, value = sentinel[name]
+        assert observable._time_since_last_sample == timer, name
+        assert observable._current_delay == delay, name
+        assert observable._sampled == sampled, name
+        assert np.array_equal(observable._current_observed_value, value), name
+    assert set(backend._obs_cache) == {"marker"}
+    assert np.array_equal(backend._obs_cache["marker"], np.asarray([42]))

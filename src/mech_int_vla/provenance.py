@@ -20,10 +20,19 @@ from .config import ProtocolConfig
 from .failure_events import ArtifactIdentity
 from .scoring import ContentLinks
 
+# Files whose bytes define the frozen experimental configuration.  ``AMENDMENTS.md``
+# is deliberately NOT a member: it is an append-only record of protocol decisions
+# and must be able to grow.  Including it made every legitimate amendment
+# invalidate the bound probe, the score sidecars and the allocation receipts that
+# referenced the older digest, which fails closed at the worst possible moment —
+# in the middle of Locked Test scoring.  Amendment integrity is carried by git
+# history and by the implementing-commit hash recorded in each entry, not by this
+# digest.  The substantive protocol definitions (start.md, PREREG.md, the configs
+# and the environment lock) remain frozen here and must not change without a
+# re-freeze.
 FROZEN_CONFIG_FILES: Final[tuple[str, ...]] = (
     "start.md",
     "PREREG.md",
-    "AMENDMENTS.md",
     "environment.lock",
     "configs/perturbations.yaml",
     "configs/split_protocol.yaml",

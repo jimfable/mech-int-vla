@@ -683,3 +683,164 @@ left to environment resolution.
   that fail closed on any mismatch. The choice was reviewed read-only by an
   independent model (Fable 5) against the preregistration before implementation.
 - **Implementing commit:** `cab0654c4f0698e27f3f488f5ab51a1fd5035d97`
+
+### 2026-08-05 — Re-render counterfactual observations and re-score Calibration
+
+- **Prior protocol commit:** `266b457bed063e6b093068a61bbdb761078e9b55`
+- **Technical reason:** Scoring-time camera and object-pose counterfactuals were
+  silent no-ops. `libero_runtime.py` read observations via robosuite's
+  `_get_observations()` without `force_update=True`; under the pinned
+  `robosuite==1.4.0` that serves cached observable values refreshed only inside
+  `step()`/`reset()`. The transform helpers did edit MuJoCo state and call
+  `sim.forward()`, but the cameras were never re-rendered, so the policy received
+  a bit-identical observation and reproduced its output exactly. Measured across
+  all 160 sidecars and 9,455 states: camera and object families show max
+  |Δ activation| = 0 and max |Δ action| = 0, while photometric families change
+  normally. Consequently five M0 columns
+  (`m0_camera_action_drift_mean`/`_max`, `m0_object_action_drift_mean`/`_max`,
+  `m0_camera_render_equivariance_error`) and two M2 columns
+  (`m2_object_probe_equivariance_error_mean_rad`, constant at exactly the 15°
+  transform magnitude, and `m2_camera_probe_circular_dispersion`) carried no
+  information. The affected M2 column is the one aimed most directly at the
+  preregistered primary variable, relative planar orientation.
+- **Exact change:** Read non-advancing observations with `force_update=True` in
+  `RawLiberoEpisode.current_raw_trace` and `counterfactual_observation`. A forced
+  read calls `_update_observables(force=True)`, which advances every observable's
+  sampling timer by one model timestep *without* advancing the simulation and
+  refills `_obs_cache`; replay performs an arbitrary number of such reads per
+  scored state, so an unrestored timer would shift the sampling phase of the next
+  real `step` and desynchronise replay from the recorded rollout. The forced read
+  is therefore wrapped in `_preserved_observable_sampling`, which snapshots and
+  restores `_time_since_last_sample`, `_current_delay`, `_current_observed_value`
+  and `_sampled` for every observable plus `_obs_cache`, making the read
+  observationally pure. Rollout production is provably unaffected: the only
+  `_raw_observation` call in `reset()` is unreachable because the protocol
+  requires ten settle steps, and every rollout frame comes from `step()`.
+  Raw rollouts, reset seeds and failure labels therefore remain valid and are
+  **not** regenerated; only the score sidecars and everything derived from them
+  are rebuilt.
+- **Affected hypotheses/metrics:** No estimand, split, threshold, probe
+  definition, feature schema or statistical rule changes. All 160 score sidecars,
+  the feature cohort, the fitted predictors, the alarm thresholds and the
+  lead-time result are invalidated and must be regenerated. The previously
+  reported Calibration values — M2-over-M1 log-loss lift 1.17% and lead-time
+  median paired difference 0.0 — are withdrawn as scientific statements: they
+  were computed while M2's orientation features were constant, so they were never
+  a fair test of internal geometry. `scoring_source_sha256` necessarily changes,
+  so the bound probe and allocation receipts must be re-published against the new
+  digest before Locked Test.
+- **Outcome visibility:** All 160 raw rollouts and outcomes, the defective score
+  sidecars, the published features, the M0/M1/M2 Calibration OOF metrics, the
+  alarm thresholds, the lead-time null and the causal pair inventory were visible
+  before this decision. No Locked Test path, artifact, label or output has ever
+  been accessed.
+- **Bias risk and mitigation:** The risk is that re-scoring is used to search for
+  a more favourable result. It is mitigated by changing nothing except the
+  observation refresh: the same manifest, seeds, transforms, probe procedure,
+  feature schema, predictor family grid, thresholds and decision rules apply, and
+  every preregistered criterion keeps its frozen value. The correction is
+  outcome-blind — it was found by inspecting feature degeneracy, not model
+  performance — and it removes a defect that suppressed M2, i.e. it works against
+  the project's own thesis rather than for it. Regression tests now fail closed on
+  both failure modes: one asserts that camera and object counterfactual
+  observations differ from the factual one, the other asserts that forced reads
+  leave the observable sampling state untouched. Both were verified to fail
+  against the defective code and pass against the fix.
+
+  Three further hardening changes land in the same commit, because every one of
+  them touches `SCORING_SOURCE_FILES` and adding them later would force a second
+  re-scoring run:
+
+  1. **Inertness guard.** `scoring._reject_inert_transforms` rejects any sidecar
+     in which a transform family produced actions *and* activations bit-identical
+     to the factual rollout across every available state. Only "nothing changed
+     at all" proves the policy saw an identical input; requiring both outputs to
+     move would be wrong, since a small edit can leave the quantised activation
+     untouched while still moving actions. The check is per episode, so a single
+     insensitive state cannot trip it. Verified against the existing defective
+     sidecars: all are rejected, i.e. this guard would have caught the defect at
+     the first episode instead of after a full run.
+  2. **Validate before publishing.** `score_replay_to_sidecar` now runs
+     `_validate_arrays` on the freshly built arrays before writing. Previously
+     validation happened only on load, so a defective sidecar could be published
+     and only rejected hours later.
+  3. **Content-keyed original activations.** `scoring_runtime` keyed its
+     original-activation cache by `id(noise)`, tying correctness to caller-side
+     tensor lifetime: a released tensor's id can be reused, and an intervention
+     would then be measured against a different draw's original activation with
+     no error raised. The cache is now keyed by a SHA-256 of the draw's bytes.
+- **Implementing commit:** `PENDING-BIND`
+
+### 2026-08-05 — Remove AMENDMENTS.md from the frozen configuration digest
+
+- **Prior protocol commit:** `266b457bed063e6b093068a61bbdb761078e9b55`
+- **Technical reason:** `AMENDMENTS.md` was a member of `FROZEN_CONFIG_FILES`, so
+  every appended amendment changed `frozen_config_sha256`. Because
+  `validate_bound_probe_artifact` and `audit_score_allocation` compare an
+  artifact's recorded `config_sha256` against the digest recomputed at validation
+  time, each legitimate amendment retroactively invalidated the bound probe, the
+  score sidecars and the allocation receipts. Verified empirically on this tree:
+  after the two 2026-08-05 amendments, `load_bound_probe_artifact` raises
+  `BoundProbeError: bound probe config/source hashes differ from repository`.
+  Since amendments are mandatory whenever the protocol is clarified, this
+  guaranteed a fail-closed abort — most damagingly in the middle of Locked Test
+  scoring, where it would have invited an ad hoc bypass.
+- **Exact change:** Drop `AMENDMENTS.md` from `FROZEN_CONFIG_FILES`. The
+  substantive protocol definitions — `start.md`, `PREREG.md`, `environment.lock`
+  and the three `configs/*.yaml` files — remain frozen and still invalidate
+  artifacts if they change, which is the intended behaviour. Amendment integrity
+  is instead carried by git history, by the tracked-file and clean-worktree
+  checks in `guard.py`, and by the implementing-commit hash recorded in each
+  entry. Verified: appending an entry no longer moves `frozen_config_sha256`.
+  Note that removing a member also changes the digest itself (the allowlist
+  framing is hashed), so `frozen_config_sha256` moves once with this change and
+  is then stable across future amendments.
+- **Affected hypotheses/metrics:** None. No estimand, split, feature, probe,
+  seed, threshold or statistical rule changes. This only stops a documentation
+  file from silently invalidating scientific artifacts.
+- **Outcome visibility:** Same as the entry above; no Locked Test access.
+- **Bias risk and mitigation:** The risk is weakening provenance. It is bounded:
+  the file removed is an append-only record, not a configuration input, and no
+  quantity in the analysis reads it. Every file that actually parameterises the
+  experiment stays in the digest, and the removal is recorded here and in the
+  code comment at the definition site.
+- **Implementing commit:** `PENDING-BIND`
+
+### 2026-08-05 — Record the coverage-feature fold coupling as a known limitation
+
+- **Prior protocol commit:** `266b457bed063e6b093068a61bbdb761078e9b55`
+- **Technical reason:** `PREREG.md` §7 requires the coverage reference to exclude
+  the query's own episode and base-init group, and the implementation does
+  exactly that. It does not, however, exclude the *other* groups that share the
+  query's cross-validation fold, and the predictor CV is grouped over the same 20
+  base-init IDs. On average 20.9% of a row's 25 nearest neighbours fall in a
+  given other fold, and for some rows all of them do, so a training row's
+  `m1_all_phase_25nn_failure_fraction` — literally the failure rate of its
+  neighbours — is computed partly from outcomes in its own validation fold. The
+  preregistration did not anticipate this coupling; the implementation is
+  faithful to it.
+- **Exact change:** None to the feature definition. The coupling is recorded here
+  with its direction, and a sensitivity analysis is added to the Calibration
+  work: after re-scoring, refit M0/M1/M2 with the three coverage features and
+  with `m2_probe_norm_success_same_phase_robust_z_abs` removed, and report the
+  change alongside the headline numbers. Changing the feature definition now
+  would require fold-dependent feature matrices, a deep restructuring of the
+  pipeline at exactly the moment when a re-scoring run must be trustworthy; the
+  risk of introducing a new defect outweighs the measured bias.
+- **Affected hypotheses/metrics:** The three coverage features are shared
+  *identically* by M1 and M2 and are absent from M0, so the preregistered primary
+  contrast M2-versus-M1 differences them out; the optimism lands on M0-versus-M1
+  and M0-versus-M2. One M2-only feature,
+  `m2_probe_norm_success_same_phase_robust_z_abs`, uses the same
+  success-conditioned reference and therefore does bias the primary contrast — in
+  favour of M2. Locked Test is unaffected, since its reference is fitted on the
+  whole Calibration split, which is disjoint from it.
+- **Outcome visibility:** Same as the entries above; the biased quantities were
+  visible before this decision, which is precisely why the direction of the bias
+  is stated explicitly rather than left implicit.
+- **Bias risk and mitigation:** The risk is presenting optimistic Calibration
+  numbers as clean. It is mitigated by naming the affected comparisons, by noting
+  that the residual primary-contrast bias favours M2 — so an M2 null result is
+  conservative — and by the preregistered sensitivity analysis above. The primary
+  estimand is decided on Locked Test, which carries none of this coupling.
+- **Implementing commit:** `PENDING-BIND`

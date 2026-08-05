@@ -853,10 +853,16 @@ def wilson_interval(
         )
         / denominator
     )
+    # At the boundaries the Wilson centre and radius are algebraically equal, so
+    # the endpoint is exactly 0 or 1.  Computing them separately leaves a
+    # rounding residue (~1e-17) whose sign depends on the platform's floating
+    # point, so pin the exact values rather than relying on cancellation.
+    lower = 0.0 if successes == 0 else max(0.0, center - radius)
+    upper = 1.0 if successes == total else min(1.0, center + radius)
     return RateInterval(
         rate=proportion,
-        lower=max(0.0, center - radius),
-        upper=min(1.0, center + radius),
+        lower=lower,
+        upper=upper,
         confidence=confidence,
         successes=successes,
         total=total,

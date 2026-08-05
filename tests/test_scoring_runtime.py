@@ -392,6 +392,22 @@ class FakePolicy:
         return noise[:, :, :7] + marker
 
 
+def _observation_marker(observation: Any) -> float:
+    """A scalar that changes whenever any observed value changes."""
+
+    total = 0.0
+    stack = [observation]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, dict):
+            stack.extend(value.values())
+        elif isinstance(value, np.ndarray):
+            total += float(np.sum(value, dtype=np.float64))
+        elif isinstance(value, (int, float)):
+            total += float(value)
+    return total % 1000.0
+
+
 class FakePolicyRuntime:
     def __init__(self, policy: FakePolicy) -> None:
         self.policy = policy
@@ -416,7 +432,14 @@ class FakePolicyRuntime:
     ) -> dict[str, Any]:
         assert task == "put the black book on the shelf"
         self.last_raw = copy.deepcopy(observation)
-        return {"marker": torch.tensor(1.0), "nested": {"x": torch.tensor([2.0])}}
+        # The marker must depend on the observation, otherwise every
+        # counterfactual transform is invisible to the fake policy and the
+        # suite cannot detect a transform that never reaches the model — which
+        # is precisely how the 2026-08-05 stale-observation defect survived.
+        return {
+            "marker": torch.tensor(_observation_marker(observation)),
+            "nested": {"x": torch.tensor([2.0])},
+        }
 
     @staticmethod
     def postprocessor(actions: torch.Tensor) -> torch.Tensor:
@@ -713,7 +736,9 @@ def test_process_observation_replaces_cameras_and_robot_fields() -> None:
     assert torch.equal(torch.random.get_rng_state(), torch_rng)
     frame = factual_replay_from_artifact(_artifact()).frames[1]
     processed = adapter.process_observation(frame)
-    assert processed["marker"].item() == 1
+    assert processed["marker"].item() == pytest.approx(
+        _observation_marker(episode.formatted)
+    )
     assert episode.formatted is not None
     assert np.array_equal(
         episode.formatted["agentview_image"], frame.camera_images["agentview_image"]

@@ -2066,3 +2066,64 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** let the run proceed. Every scored episode is validated before it
   is published, so a residual inert transform aborts within minutes instead of
   surviving the full run. Locked Test remains closed.
+
+### 2026-08-06 19:40 CEST — CALIBRATION-RESCORE-002: re-scoring complete, first fair M0/M1/M2 read-out
+
+- **All 160 episodes re-scored** with working counterfactuals. Two processes
+  walked the manifest from both ends (83 forward, 77 reverse) and met at
+  `init20-cell2`, where the reverse worker terminated on the exclusive-write
+  guard exactly as intended — no overwrite, no data loss. The forward worker
+  then validated the 77 foreign sidecars through the normal loader path and ran
+  finalization. Zero errors across the run; the inertness guard never fired,
+  i.e. all six transform families reached the policy input in every episode.
+- **Every previously degenerate column now carries information:**
+
+  | column | before | now (distinct / variance) |
+  |---|---|---|
+  | `m0_camera_action_drift_mean` | constant 0 | 9455 / 0.036 |
+  | `m0_camera_action_drift_max` | constant 0 | 9455 / 0.090 |
+  | `m0_object_action_drift_mean` | constant 0 | 6211 / 0.013 |
+  | `m0_object_action_drift_max` | constant 0 | 6211 / 0.074 |
+  | `m0_camera_render_equivariance_error` | constant 0 | 9455 / 0.037 |
+  | `m2_object_probe_equivariance_error_mean_rad` | constant 15.0° | 6211 / 0.021 |
+  | `m2_camera_probe_circular_dispersion` | ~1e-16 | 9455 / 0.0092 |
+
+- **Corrected Calibration read-out** (group-5-fold OOF, 160 episodes / 9,455
+  states; selected family **histogram gradient boosting**, learning rate 0.03,
+  200 iterations, 7 leaves, min 20 samples per leaf):
+
+  | model | AUROC | log loss |
+  |---|---|---|
+  | M0 | 0.8277 | 0.43347 |
+  | M1 | 0.9366 | 0.24636 |
+  | M2 | 0.9378 | 0.24537 |
+
+  M1 over M0 is 43.16%, M2 over M0 is 43.39%, and **M2 over M1 is 0.40%**
+  against the preregistered 3% threshold. Kill-Switch 1 is not triggered
+  (M1 AUROC 0.9366 < 0.95).
+- **The repair helped M0, not M2.** Against the defective run, M0 AUROC rose
+  from 0.7889 to 0.8277 — the counterfactual action-drift arm was dead and now
+  carries real signal — while the M2-over-M1 lift *fell* from 1.17% to 0.40%.
+  The earlier conclusion is therefore not merely reproduced but strengthened,
+  and this time it rests on a fair comparison in which M2's orientation features
+  were able to contribute.
+- **New substantive finding:** `m2_object_probe_equivariance_error_mean_rad` was
+  previously pinned at exactly 15.0°, the full transform magnitude, meaning the
+  probe prediction did not move at all under object rotation. Its median is now
+  12.8° under the same 15° rotation, so the representation tracks roughly 15% of
+  the actual rotation. The geometry is present but weak — which is a coherent
+  mechanistic explanation for why M2 adds so little.
+- **Model family changed** from logistic regression to histogram gradient
+  boosting. This is protocol-conformant: selection is on M1 raw OOF log loss
+  only, and with corrected features a different family wins.
+- **Backup:** the full re-scored set is off-instance and independently verified —
+  320 score files (589 MB) byte-identical, plus the feature root (68 MB) and the
+  re-bind analysis artifacts. New digests: cohort `ef51efbb…`, predictors
+  `47daa982…`, bound probe `e94269a1…`, score allocation `89dfae2f…`.
+  `locked_test_accessed=false` throughout.
+- **Instance stopped** at genuine idle; it still exists with its 200 GB disk.
+- **Decision:** the defective Calibration numbers are formally superseded. Next,
+  on CPU: alarm-threshold calibration and Lead Time, the causal pair inventory,
+  and the preregistered coverage-feature sensitivity refit — all against the new
+  cohort. Only the §8 alpha calibration needs the GPU again. Locked Test remains
+  closed.

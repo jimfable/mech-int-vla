@@ -2184,3 +2184,40 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** Calibration-side prediction work is complete. Remaining before
   the freeze: the §8 alpha calibration, which is the only step still needing the
   GPU. Locked Test stays closed.
+
+### 2026-08-06 20:40 CEST — CALIBRATION-ALPHA-001: off-manifold half of the alpha calibration passes
+
+- **Design:** `PREREG.md:345-347` picks alpha from {0.25, 0.5, 1.0} as the
+  smallest value with the expected target-action sign *and* an off-manifold rate
+  ≤ 5%. The two conditions need different resources, so the off-manifold half —
+  pure geometry on the patched activation vector — was evaluated first on CPU.
+  An alpha failing here is disqualified regardless of its action effect, so this
+  ordering can retire the whole GPU stage for free.
+- **Pairs:** `select_pairs_for_three_seeds` returned the full 60 attempted pairs
+  (20 per seed over three deterministic seeds), consistent with the 19,829
+  eligible edges in the inventory — the seeds diversify rather than exhaust.
+- **Result — every alpha passes, none is off-manifold:**
+
+  | alpha | off-manifold rate | median patched 5-NN distance |
+  |---|---|---|
+  | 0.25 | 0.0% | 2.697 |
+  | 0.5 | 0.0% | 2.719 |
+  | 1.0 | 0.0% | 2.786 |
+
+  The natural 95th percentile is 3.891, so every patched activation sits well
+  inside the natural distribution. The frozen ≤5% constraint is satisfied by all
+  three strengths, and the preregistered preference for the smallest makes
+  **alpha = 0.25** the candidate, pending the sign condition.
+- **Substantive observation:** the patched 5-NN distance barely responds to
+  alpha — 2.697 to 2.786 across a fourfold increase in strength. The intervention
+  therefore moves the activation very little in the metric that matters for
+  naturalness. Read together with the weak probe decoding (~0.25 rad) and the
+  15%-of-rotation equivariance tracking, this is the same picture from a third
+  angle: the probe subspace carries a real but small share of the representation.
+  It also means the off-manifold criterion is not the binding constraint here,
+  contrary to the pre-run expectation that flow-matching models would resist
+  linear patching.
+- **Decision:** proceed to the GPU sign stage. It must apply
+  `h_r' = h_r + alpha·P(h_d − h_r)` at the recipient state, run a patched forward
+  pass, and check that the yaw action moves in the donor-aligned direction. Only
+  then is alpha frozen. Locked Test remains closed.

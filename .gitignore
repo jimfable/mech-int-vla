@@ -24,6 +24,9 @@ artifacts/calibration-score-18d6494-001/
 artifacts/calibration-features-18d6494-001/cohort/
 artifacts/calibration-features-18d6494-001/reference/
 artifacts/calibration-score-continuation-18d6494-001/resource-sample-attempts/
+artifacts/calibration-score-rescore-001/
+artifacts/calibration-features-rescore-001/cohort/
+artifacts/calibration-features-rescore-001/reference/
 *.mp4
 *.npy
 *.npz

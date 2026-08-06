@@ -47,7 +47,7 @@ from mech_int_vla.features import (
 
 SCHEMA_VERSION = 1
 EXPECTED_COHORT_SHA256 = (
-    "03c37788c579e746ea9c9bd039a3636ca7f851c7694900b53f95e5861b5343ed"
+    "989f67f8b18dbc7349dc85bc4552cfc0d4c0bbf379b0d2fd5e33ce0ef82446e0"
 )
 # Frozen tolerances (causal.pair_eligibility); the prefilter widens them.
 GRIPPER_TOLERANCE = 0.01

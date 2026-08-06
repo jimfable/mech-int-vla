@@ -2127,3 +2127,60 @@ that experiments, negative results, decisions, and confidence can be audited.
   and the preregistered coverage-feature sensitivity refit — all against the new
   cohort. Only the §8 alpha calibration needs the GPU again. Locked Test remains
   closed.
+
+### 2026-08-06 20:15 CEST — CALIBRATION-RESCORE-003: alarm, pairs and leakage sensitivity on corrected data
+
+- **Alarm thresholds and Lead Time, recomputed.** All frozen anchors reproduced
+  against the new cohort before any threshold was computed. Thresholds land at a
+  realised 9.35% episode FPR (10 of 107 successes) for all three models: M0
+  0.5407, M1 0.4927, M2 0.5040.
+
+  | comparison | median lead (baseline → M2) | median paired difference | 90% interval | detection rate |
+  |---|---|---|---|---|
+  | **M2 vs M1** (preregistered) | 435 → 435 | **0.0** | [0.0, 0.0] | 100% → 100% |
+  | M2 vs M0 (secondary) | 405 → 435 | 60.0 | [45.0, 70.0] | 92.5% → 100% |
+
+  The internal lead-time claim requires a median paired gain ≥ 5 control steps.
+  Observed is again **exactly 0.0 with a degenerate interval**: with corrected
+  counterfactuals, internal signals still raise the alarm on precisely the same
+  control step as M1 in every failed episode. M0 improved (detection 83% → 92.5%,
+  lead 395 → 405), which is the expected consequence of its drift features
+  becoming informative.
+- **Causal pair inventory reproduces exactly.** 19,829 eligible confirmatory
+  pairs, 19,335 cross-episode, 14,848 cross-cluster, 3,062 participating states,
+  orientation quantiles 30.0/53.1/90.0 — identical to the pre-fix inventory to
+  every digit. This is the expected invariant: pairing depends only on factual
+  simulator state, which the scoring defect never touched. It doubles as a
+  cross-check that the re-scored cohort carries the same episodes and rows.
+- **Leakage sensitivity refit — and a correction to an earlier claim.** Dropping
+  the four label-informed columns (three shared by M1/M2, one M2-only):
+
+  | model | with the columns | without |
+  |---|---|---|
+  | M0 | 0.8277 / 0.43347 | 0.8277 / 0.43347 (unchanged, as it has none) |
+  | M1 | 0.9366 / 0.24636 | 0.9335 / 0.25320 |
+  | M2 | 0.9378 / 0.24537 | 0.9338 / 0.25017 |
+
+  M2 over M1 moves from **0.40% to 1.20%**; M1 over M0 from 43.17% to 41.59%.
+  The earlier amendment reasoned that the residual bias favoured M2, making an
+  M2 null conservative. **That reasoning was wrong and is corrected here:**
+  removing the leak-prone features *increases* M2's margin. The three shared
+  coverage features are strongly predictive, so while present they absorb
+  variance that M2's increment might otherwise explain. The direction of the
+  bias is therefore against M2, not for it. Both figures nonetheless fall well
+  short of the preregistered 3% threshold, so the conclusion is unchanged while
+  the stated reasoning behind it is not.
+- **Convergent read-out on corrected data:** predictive lift M2 over M1 is 0.40%
+  (1.20% without leak-prone features) against a 3% threshold, and lead-time gain
+  is 0.0 steps against a 5-step threshold. Both preregistered internal-signal
+  criteria fail on Calibration, now measured with M2's orientation features
+  fully functional. The large gains — 43.4% log loss, 60 steps of lead — are
+  M2 over M0, i.e. internal signals substituting for privileged simulator state
+  rather than exceeding it.
+- **Receipts:** alarm `9732b235…`, pair inventory unchanged at `6e1659b4…`
+  content, leakage sensitivity written to
+  `artifacts/calibration-leakage-sensitivity-001/`. All carry
+  `locked_test_accessed=false`.
+- **Decision:** Calibration-side prediction work is complete. Remaining before
+  the freeze: the §8 alpha calibration, which is the only step still needing the
+  GPU. Locked Test stays closed.

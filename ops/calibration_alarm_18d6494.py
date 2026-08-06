@@ -59,13 +59,13 @@ RELATIVE_TOLERANCE = 1e-9
 # Independently pinned so that a regenerated or altered predictors.json cannot
 # supply self-consistent expectations for its own verification.
 EXPECTED_CALIBRATION_DATA_SHA256 = (
-    "215e52cf3c6d50627bdd72834a95610d4b3d9b78118fc4cebc187d57f3488986"
+    "8713c4cba62b2e7b6dab8c088f1ec8085fcd6ca5ddfab8eef3e407b864d0a4a1"
 )
 EXPECTED_COHORT_SHA256 = (
-    "03c37788c579e746ea9c9bd039a3636ca7f851c7694900b53f95e5861b5343ed"
+    "989f67f8b18dbc7349dc85bc4552cfc0d4c0bbf379b0d2fd5e33ce0ef82446e0"
 )
 EXPECTED_PREDICTOR_METADATA_SHA256 = (
-    "acecac7b14856682e6d4b79a6cdba0815c50b76555b7863530351895db3adda7"
+    "47daa9825cd35eaf7dfb9e20e482972f30bf79c7b8eac878e17bf055e8184917"
 )
 
 # PREREG.md:50 defines the internal-signal lead-time claim as M2 versus M1.

@@ -213,6 +213,13 @@ def main() -> int:
     parser.add_argument("--bound-probe", type=Path, required=True)
     parser.add_argument("--score-root", type=Path, required=True)
     parser.add_argument("--feature-root", type=Path, required=True)
+    # Scoring is embarrassingly parallel across episodes and each sidecar is
+    # published exclusively, so a second process walking the manifest backwards
+    # roughly halves wall clock.  Where the two meet, the already-published
+    # sidecar is simply resumed; a genuine collision fails closed on the
+    # exclusive write rather than corrupting anything.
+    parser.add_argument("--reverse", action="store_true")
+    parser.add_argument("--skip-finalize", action="store_true")
     args = parser.parse_args()
 
     root = args.repo_root.resolve()
@@ -264,7 +271,7 @@ def main() -> int:
         policy_runtime = load_locked_smolvla(snapshots, device="cuda")
 
     completed = 0
-    for episode_id in valid_ids:
+    for episode_id in (list(reversed(valid_ids)) if args.reverse else valid_ids):
         destination = _sidecar_path(score_root, episode_id)
         if destination.exists():
             # Full loader verification is the resume guard; later allocation
@@ -335,7 +342,18 @@ def main() -> int:
             episode.close()
 
     # Build the exact score allocation and downstream M0/M1/M2 feature cohort
-    # only after every valid raw has a fully validated sidecar.
+    # only after every valid raw has a fully validated sidecar.  A sharded
+    # worker skips this so that exactly one process performs finalization.
+    if args.skip_finalize:
+        print(
+            json.dumps(
+                {"kind": "score_shard_complete", "completed": completed,
+                 "total": len(valid_ids), "reverse": bool(args.reverse)},
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        return 0
     raw_artifacts = [
         load_rollout_artifact(raw_paths[episode_id], expected_task=task)
         for episode_id in valid_ids

@@ -844,3 +844,45 @@ left to environment resolution.
   conservative — and by the preregistered sensitivity analysis above. The primary
   estimand is decided on Locked Test, which carries none of this coupling.
 - **Implementing commit:** `773290d32482ca3d18b69a3a0bded4875d14f1fc`
+
+### 2026-08-07 — Move the calibration freeze tag to add Locked Test tooling
+
+- **Prior protocol commit:** `a02b29de9bd255590aed895174c69c03e26bd23d`
+- **Technical reason:** `assert_locked_test_ready` requires the
+  `calibration-locked-v1` tag to sit exactly at HEAD. Locked Test cannot run
+  without a collection runner for `SplitName.LOCKED_TEST`; the existing runners
+  are hardcoded to Calibration, and no Locked Test runner was ever written. Any
+  commit adding one moves HEAD away from the tag and the guard refuses. The
+  freeze therefore has to be re-tagged, or Locked Test can never be executed at
+  all.
+- **Exact change:** Add `ops/locked_test_cell.py` and
+  `ops/locked_test_supervisor.py`, then move the `calibration-locked-v1` tag to
+  the commit containing them. Nothing else changes. The new runners are copies
+  of the Calibration ones with three differences: the split is
+  `SplitName.LOCKED_TEST`, the manifest digest is the Locked Test manifest
+  `1fd8c818…`, and the checkout guard is replaced by a real call to
+  `assert_locked_test_ready`, which is strictly stronger — it verifies the
+  freeze file, the tag, a clean worktree, all nine frozen fields and the byte
+  hashes of the four referenced artifacts before a single episode runs.
+- **Affected hypotheses/metrics:** None. `locks/calibration_frozen.json` is
+  byte-identical across the tag move, as are all four artifacts it references
+  (predictor bundle, probe, reality gate lock, Calibration manifest). No
+  estimand, split, threshold, probe, predictor, feature, seed or decision rule
+  is touched. The frozen values — probe `early_expert_t1_0` at ridge alpha 1.0,
+  histogram gradient boosting, alarm thresholds 0.5407/0.4927/0.5040, patch
+  strength 0.25, and the Calibration metrics — are unchanged and remain
+  verifiable through the guard.
+- **Outcome visibility:** All Calibration results were visible before this
+  decision, including the failing predictive-lift and lead-time comparisons and
+  the causal preview. No Locked Test artifact, label, outcome or path has been
+  accessed; the Locked Test raw set does not exist yet.
+- **Bias risk and mitigation:** The risk is that a tag move becomes cover for
+  changing an analysis decision after seeing Calibration results. Mitigation is
+  that the change is fully auditable: `git diff` between the old and new tagged
+  commits shows only two added files under `ops/`, the freeze file's digest is
+  recorded here on both sides of the move, and the guard independently rehashes
+  every referenced artifact at run time. A reviewer can verify in one command
+  that no scientific quantity moved. The alternative — keeping the runners
+  outside the repository to preserve the tag — would have made the Locked Test
+  run unreproducible, which is strictly worse.
+- **Implementing commit:** `PENDING-BIND`

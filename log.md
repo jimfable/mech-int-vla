@@ -2221,3 +2221,47 @@ that experiments, negative results, decisions, and confidence can be audited.
   `h_r' = h_r + alpha·P(h_d − h_r)` at the recipient state, run a patched forward
   pass, and check that the yaw action moves in the donor-aligned direction. Only
   then is alpha frozen. Locked Test remains closed.
+
+### 2026-08-07 05:05 CEST — CALIBRATION-ALPHA-002: sign stage blocked by the adapter's intervention contract
+
+- **Status: not completed.** Three overnight attempts at the GPU sign stage each
+  failed for a different reason. The off-manifold half remains done and passing;
+  only the sign condition is outstanding, so alpha is not yet frozen.
+- **Defect 1 — instrumentation lifetime.** `patch()` refuses to run while the
+  hooks are uninstalled. An outer `with instrumentation` block does not survive,
+  because `SmolVLAScoringAdapter.predict_action_chunk` itself enters
+  `self.instrumentation` as a context manager (`scoring_runtime.py:1044-1048`)
+  and its `__exit__` calls `remove()`. Every adapter inference therefore
+  uninstalls the hooks behind it. Fixed by re-installing immediately before each
+  patch context.
+- **Defect 2 — candidate name is not a hook name.** The probe candidate
+  `early_expert_t1_0` encodes hook *and* flow step together, while
+  `instrumentation.patch` expects the hook alone. Fixed by resolving through the
+  frozen `candidate_target` map (`early_expert_t1_0 -> expert_layer_4`, step 0),
+  the same mapping the scoring adapter uses, so the patch lands where the probe
+  was fitted.
+- **Defect 3 — structural, still open.** With both fixed, the patch is applied
+  and the forward runs, but the adapter aborts with
+  `selected activation patch marker disagrees` (`scoring_runtime.py:951`). The
+  adapter validates that its own `patched` flag matches the observed patch
+  marker, and that flag is driven solely by `intervention_degrees`, i.e. the
+  frozen ±10° probe-shift intervention. An externally supplied donor patch is
+  therefore rejected by design. This is a guard behaving correctly, not a bug:
+  the scoring adapter was built for the M2 controllability feature, not for
+  Section 10 donor patching.
+- **Consequence:** the sign stage needs its own inference path that applies the
+  patch and reads the resulting action chunk without the adapter's
+  intervention-marker contract, while still reusing the frozen preprocessing,
+  noise draws and postprocessing so the actions stay comparable to the recorded
+  ones. That is a deliberate piece of work, not another quick retry.
+- **Process failures worth recording.** (1) A monitor reported a crashed run as
+  "alive" for 2.5 hours because its `pgrep` pattern matched its own wrapper
+  process; the run had died in the first minute and the GPU idled. The same
+  mistake had already occurred once earlier in the project. Monitors now capture
+  the PID at launch and check that PID. (2) The O(n^2) pair selection (~35 min
+  per attempt) was flagged in this log as needing bucketing and was then not
+  implemented, so every failed attempt paid it in full. (3) Testing the patch
+  mechanics in isolation — which finally exposed defect 3 in two minutes —
+  should have come before any full run.
+- **Instance stopped.** All artifacts remain backed up off-instance and verified.
+  Locked Test remains closed and unaccessed.

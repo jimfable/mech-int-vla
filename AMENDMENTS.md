@@ -885,4 +885,4 @@ left to environment resolution.
   that no scientific quantity moved. The alternative — keeping the runners
   outside the repository to preserve the tag — would have made the Locked Test
   run unreproducible, which is strictly worse.
-- **Implementing commit:** `PENDING-BIND`
+- **Implementing commit:** `e766c3abced6958314f49d2bad92a9d8992165f2`

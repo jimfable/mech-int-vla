@@ -2321,3 +2321,44 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** Calibration is closed. What remains is the tracked freeze plus
   the `calibration-locked-v1` tag, and then the Locked Test — which stays shut
   until the user explicitly opens it.
+
+### 2026-08-07 09:40 CEST — CALIBRATION-FREEZE-001: Calibration frozen, Locked Test authorized but not opened
+
+- **`locks/calibration_frozen.json` is committed and `calibration-locked-v1` is
+  tagged at that commit.** `assert_locked_test_ready` accepts it: repository at
+  `a02b29d`, tag exactly at HEAD, worktree clean including untracked files, all
+  nine required fields present, every referenced artifact git-tracked with
+  matching bytes. Locked Test is now *authorized* — and remains *unopened*.
+- **Nothing was chosen at freeze time.** Every value is read from artifacts that
+  already existed. The only quantity computed here is the Brier score, which the
+  guard requires and no earlier step produced. It is derived from out-of-fold
+  probabilities reconstructed deterministically and bound to the frozen
+  calibration data hash `8713c4cb…` and the recorded per-model OOF log losses;
+  a mismatch aborts rather than reporting numbers other than those the
+  predictors were selected on. Both anchors reproduced exactly.
+- **The Calibration manifest is now tracked.** The guard requires each referenced
+  artifact to be a git-tracked file. The manifest previously existed only on the
+  instance; it is deterministically reconstructible and reproduces its frozen
+  digest `6f5c7a5b…` byte for byte, so no GPU was needed to recover it.
+- **Frozen contents:**
+
+  | field | value |
+  |---|---|
+  | representation probe | `early_expert_t1_0`, ridge alpha 1.0 |
+  | predictor | histogram gradient boosting (lr 0.03, 200 iter, 7 leaves, min 20) |
+  | alarm thresholds | M0 0.5407, M1 0.4927, M2 0.5040 |
+  | patch strength | 0.25 |
+  | Calibration metrics | M0 0.4335 / 0.1946 / 0.8277, M1 0.2464 / 0.0994 / 0.9366, M2 0.2454 / 0.0992 / 0.9378 (log loss / Brier / AUROC) |
+
+- **Note on `predictor.coefficient_hash`:** the selected family is histogram
+  gradient boosting, which has no coefficient vector, so the field carries the
+  frozen predictor-metadata digest `47daa982…`, which identifies the fitted
+  bundle exactly. The guard requires a SHA-256; it does not require it to be a
+  literal coefficient hash.
+- **Locked Test cost, for the record.** The Locked Test rollouts do not exist:
+  the raw set contains only 160 Calibration and 40 Discovery episodes, which is
+  the intended state. Opening Locked Test therefore means collecting 160 fresh
+  rollouts (~5-10 GPU hours) and scoring them (~11-18 GPU hours), i.e. one to
+  two days of GPU, before any primary number exists.
+- **Decision:** stop here. The freeze is the last reversible step; opening the
+  Locked Test is not. It stays closed until the user explicitly authorizes it.

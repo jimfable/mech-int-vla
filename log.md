@@ -2265,3 +2265,59 @@ that experiments, negative results, decisions, and confidence can be audited.
   should have come before any full run.
 - **Instance stopped.** All artifacts remain backed up off-instance and verified.
   Locked Test remains closed and unaccessed.
+
+### 2026-08-07 09:00 CEST — CALIBRATION-ALPHA-003: alpha frozen at 0.25; patching shows no specific effect
+
+- **Calibration is now complete.** The sign stage ran over all 60 preregistered
+  pairs (20 per seed, three deterministic seeds) at the frozen probe location
+  `early_expert_t1_0` → `expert_layer_4`, flow step 0.
+- **Structural blocker resolved.** `SmolVLAScoringAdapter.predict_action_chunk`
+  validates that its internal `patched` flag matches the observed patch marker,
+  and that flag is driven solely by its frozen ±10° probe-shift intervention, so
+  a Section 10 donor patch is rejected by design. The runner now reproduces the
+  adapter's inference core exactly — same `inference_mode`, instrumentation
+  scope, defensive batch clone and postprocessor — and reads only the action
+  chunk, which is all the sign condition needs. Verified in isolation before the
+  full run: the baseline forward is bit-deterministic across repeats and all
+  three alphas patch cleanly. Two further defects surfaced in that isolated test
+  within two minutes each: the candidate name encodes hook *and* flow step and
+  must be resolved through `candidate_target`, and the policy emits 50 actions
+  while sidecars and `summarize_action_effect` use the first `CHUNK_ACTIONS`.
+- **Alpha selection.** All three alphas satisfy the off-manifold constraint
+  (0.0% each) and all three exceed a 50% sign rate as point estimates, so the
+  preregistered rule — smallest qualifying value — freezes **alpha = 0.25**.
+- **But the effect is indistinguishable from chance:**
+
+  | alpha | sign correct | two-sided binomial p | 90% interval |
+  |---|---|---|---|
+  | 0.25 | 34/60 = 56.7% | 0.366 | [45.2%, 67.6%] |
+  | 0.5 | 36/60 = 60.0% | 0.155 | [48.6%, 70.7%] |
+  | 1.0 | 31/60 = 51.7% | 0.897 | [40.3%, 62.9%] |
+
+  Every interval contains 50%. `PREREG.md:369-374` requires, for the
+  confirmatory claim, "sign correctness exceeds 50% with a 90% cluster interval
+  above 50%" — on Calibration no alpha comes close to that bar.
+- **Specificity is failed by more than an order of magnitude.** Median
+  off-target ratio is 4.94 / 3.63 / 5.51 for the three alphas, against a
+  preregistered bound of 0.25. The patch moves non-yaw action dimensions three
+  to five times *more* than the targeted yaw axis. Median donor-aligned target
+  effects are 1.6e-05 to 2.1e-04, i.e. numerically negligible.
+- **Interpretation, stated carefully.** These are Calibration values whose
+  preregistered purpose is to *select* the patch strength, not to decide the
+  causal claim; the confirmatory test belongs to Locked Test. Alpha is duly
+  frozen at 0.25 and the protocol is satisfied. But the preview is unambiguous:
+  a patch along the frozen probe subspace neither moves the target action
+  reliably in the donor-aligned direction nor does so specifically. Combined
+  with the weak decoding (~0.25 rad), the ~15% equivariance tracking, the
+  near-zero movement on the activation manifold, and the absent predictive and
+  lead-time lift over M1, five independent measurements now point the same way:
+  the probe subspace carries a real but small share of the representation, and
+  the policy's behaviour does not hinge on it in a way this intervention can
+  demonstrate.
+- **Receipts:** `alpha-sign.json` and `alpha-off-manifold.json`, both copied
+  off-instance. The pair selection is cached at
+  `alpha-pairs-cache.json` on the instance so it never costs 35 minutes again.
+  `locked_test_accessed=false` throughout. Instance stopped.
+- **Decision:** Calibration is closed. What remains is the tracked freeze plus
+  the `calibration-locked-v1` tag, and then the Locked Test — which stays shut
+  until the user explicitly opens it.

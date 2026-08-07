@@ -26,6 +26,7 @@ import json
 import os
 from collections import defaultdict
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -40,13 +41,17 @@ from mech_int_vla.causal import (
     summarize_action_effect,
 )
 from mech_int_vla.config import ConditionSpec, SplitName, load_protocol_config
+from mech_int_vla.scoring import CHUNK_ACTIONS
 from mech_int_vla.feature_artifacts import load_feature_cohort, load_feature_reference_bundle
 from mech_int_vla.features import _relative_quaternion, _xyzw_to_wxyz, _yaw_wxyz
 from mech_int_vla.instrumentation import SmolVLAInstrumentation
 from mech_int_vla.libero_runtime import RawLiberoEpisode
 from mech_int_vla.manifest import reconstruct_episode_manifest
 from mech_int_vla.probe_artifacts import load_bound_probe_artifact
+from contextlib import nullcontext
+
 from mech_int_vla.scoring_runtime import (
+    _clone_batch,
     SmolVLAScoringAdapter,
     candidate_target,
     factual_replay_from_artifact,
@@ -128,6 +133,47 @@ def _sidecar_arrays(score_root: Path, episode_id: str) -> dict[str, np.ndarray]:
         return {k: np.asarray(handle[k]) for k in ("control_step", "original_actions", "original_activation")}
 
 
+def _action_chunk(adapter, processed, noise, *, shift=None, location=None,
+                  denoising_step=None):
+    """Run one action chunk, optionally under an external activation patch.
+
+    ``SmolVLAScoringAdapter.predict_action_chunk`` cannot be used here: it
+    validates that its internal ``patched`` flag matches the observed patch
+    marker, and that flag is set solely by its frozen probe-shift intervention,
+    so a Section 10 donor patch is rejected by design.  This reproduces the
+    adapter's inference core exactly — same ``inference_mode``, same
+    instrumentation scope, same defensive batch clone, same postprocessor — and
+    returns only the action chunk, which is all the sign condition needs.  The
+    activation is not read, so the marker check is not needed.
+    """
+
+    policy = adapter.policy_runtime.policy
+    patch_context = (
+        nullcontext()
+        if shift is None
+        else adapter.instrumentation.patch(
+            location, shift, denoising_step=denoising_step
+        )
+    )
+    with torch.inference_mode(), adapter.instrumentation:
+        with patch_context:
+            normalized = policy._get_action_chunk(
+                _clone_batch(processed), noise=noise
+            )
+    postprocessed = adapter.policy_runtime.postprocessor(normalized)
+    actions = (
+        postprocessed.detach().to(device="cpu", dtype=torch.float32).numpy()
+        if isinstance(postprocessed, torch.Tensor)
+        else np.asarray(postprocessed)
+    )
+    if actions.shape == (1, 50, 7):
+        actions = actions[0]
+    # The policy emits 50 actions per chunk while the frozen sidecars keep the
+    # first CHUNK_ACTIONS, which is also the window summarize_action_effect
+    # compares.  Trim here so recipient, donor and patched arrays align.
+    return np.asarray(actions[:CHUNK_ACTIONS], dtype=np.float32)
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     for name in ("repo-root", "environment-lock", "cache-dir", "manifest", "raw-root",
@@ -135,6 +181,10 @@ def main() -> int:
         p.add_argument(f"--{name}", type=Path, required=True)
     p.add_argument("--cohort-sha256", required=True)
     p.add_argument("--max-pairs", type=int, default=60)
+    # The frozen selection is O(n^2) over 9,455 candidates and takes ~35 minutes.
+    # It depends only on factual state, so caching it is a pure speedup with no
+    # effect on which pairs are chosen.
+    p.add_argument("--pairs-cache", type=Path, default=None)
     args = p.parse_args()
 
     root = args.repo_root.resolve()
@@ -169,9 +219,39 @@ def main() -> int:
     )
     action_scale = np.asarray(reference.action_scale.values, dtype=np.float64)
 
-    candidates = _build_candidates(cohort, args.raw_root.resolve())
-    selection = select_pairs_for_three_seeds(candidates, seeds=PAIRING_SEEDS)
-    pairs = [(sel.seed, pr) for sel in selection.selections for pr in sel.pairs][: args.max_pairs]
+    cache = args.pairs_cache
+    if cache is not None and cache.exists():
+        cached = json.loads(cache.read_text(encoding="utf-8"))
+        _require(cached["cohort_sha256"] == args.cohort_sha256,
+                 "pair cache was built for a different cohort")
+        _require(cached["pairing_seeds"] == list(PAIRING_SEEDS),
+                 "pair cache was built for different seeds")
+        pairs = [
+            (int(e["seed"]), SimpleNamespace(
+                recipient_id=e["recipient_id"], donor_id=e["donor_id"],
+                orientation_difference_deg=float(e["orientation_difference_deg"])))
+            for e in cached["pairs"]
+        ]
+        print(json.dumps({"kind": "pairs_loaded_from_cache", "pairs": len(pairs)}), flush=True)
+    else:
+        candidates = _build_candidates(cohort, args.raw_root.resolve())
+        selection = select_pairs_for_three_seeds(candidates, seeds=PAIRING_SEEDS)
+        pairs = [(sel.seed, pr) for sel in selection.selections for pr in sel.pairs]
+        if cache is not None:
+            payload = {
+                "cohort_sha256": args.cohort_sha256,
+                "pairing_seeds": list(PAIRING_SEEDS),
+                "pairs": [
+                    {"seed": int(sd), "recipient_id": pr.recipient_id,
+                     "donor_id": pr.donor_id,
+                     "orientation_difference_deg": float(pr.orientation_difference_deg)}
+                    for sd, pr in pairs
+                ],
+            }
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+            print(json.dumps({"kind": "pairs_cached", "pairs": len(pairs)}), flush=True)
+    pairs = pairs[: args.max_pairs]
     _require(bool(pairs), "no pairs selected")
 
     snapshots = resolve_snapshot_paths(
@@ -231,9 +311,7 @@ def main() -> int:
                 processed = adapter.process_observation(frame)
                 noise = adapter.noise_for_seed(int(r_side["control_step"][r_index]))
 
-                baseline = adapter.predict_action_chunk(
-                    processed, noise=noise, intervention_degrees=None
-                ).actions
+                baseline = _action_chunk(adapter, processed, noise)
                 for alpha in PATCH_ALPHA_GRID:
                     shift = probe_patch_shift(
                         recipient_activation, donor_activation, coefficient, alpha=float(alpha)
@@ -241,11 +319,10 @@ def main() -> int:
                     tensor = torch.as_tensor(
                         np.array(shift, dtype=np.float32, copy=True), device=adapter.device
                     )
-                    instrumentation.install()
-                    with instrumentation.patch(location, tensor, denoising_step=denoising_step):
-                        patched = adapter.predict_action_chunk(
-                            processed, noise=noise, intervention_degrees=None
-                        ).actions
+                    patched = _action_chunk(
+                        adapter, processed, noise, shift=tensor,
+                        location=location, denoising_step=denoising_step,
+                    )
                     summary = summarize_action_effect(
                         baseline, donor_actions, patched, action_scale=action_scale
                     )

@@ -2362,3 +2362,31 @@ that experiments, negative results, decisions, and confidence can be audited.
   two days of GPU, before any primary number exists.
 - **Decision:** stop here. The freeze is the last reversible step; opening the
   Locked Test is not. It stays closed until the user explicitly authorizes it.
+
+## 2026-08-25 — BLOCKER: Locked Test dry-run cannot start (instance destroyed, negative balance)
+
+- **State:** Amendments 1-3+5 and addendum-4 terms approved (AMENDMENTS.md
+  2026-08-25); tooling + runbook committed; Locked Test manifest reconstructed
+  and its digest reproduces the frozen 1fd8c818... byte for byte; authority
+  written (locked_test_accessed: True); tags calibration-locked-v1 and
+  locked-test-score-v1 at HEAD 9daa4df; freeze payload and four artifacts
+  re-verified byte-identical. Locked Test raw set does not exist.
+- **Blocker:** 1) Vast instance 46677323 (the only instance; storage "never
+  delete") reports "not found or no longer exists" — the disk, /venv/main,
+  /workspace/hf-cache, runstate and research-artifacts live copy are gone.
+  2) Account balance is -$4.28 with the billing threshold enabled; recent card
+  charges show requires_action/failed, so no instance can be rented or started.
+- **Freeze protection applied:** deviation from the runbook's Step 1 (expected
+  existing instance, disk preserved) -> STOP, report, do not continue. No
+  Locked Test rollout, no scoring, no improvised re-provisioning.
+- **Record intact:** all frozen artifacts are mirrored and byte-verified in
+  this repo; the Calibration raw set has the off-instance backup marker
+  (artifacts/raw-backup-ready/.complete). The pinned environment recipe
+  (environment-gpu.freeze, LeRobot v0.6.0, hf-libero 0.1.4, policy snapshot
+  31d453f7...) is versioned.
+- **Resume path (requires human action, in order):** (1) restore billing
+  (add credits / fix card); (2) provision a new 1x RTX 5090 instance; (3)
+  rebuild the environment per environment-gpu.freeze; (4) restore/verify the
+  raw calibration artifacts from the off-instance backup (byte hashes against
+  the freeze manifest); (5) rerun runbook Step 0-2 (including dry-run on 2-3
+  episodes) before any full collection. Locked Test stays closed until then.

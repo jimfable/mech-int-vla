@@ -886,3 +886,72 @@ left to environment resolution.
   outside the repository to preserve the tag — would have made the Locked Test
   run unreproducible, which is strictly worse.
 - **Implementing commit:** `e766c3abced6958314f49d2bad92a9d8992165f2`
+
+### 2026-08-25 — Approved Locked Test evaluation amendments (toy validation phase)
+
+- **Prior protocol commit:** `0808b23fabf0214b5230e277464dcdc9a576fe13`
+- **Technical reason:** Five changes were approved by the study owner after a
+  standalone toy stack (`../tiny-vla-interp`, nine toy experiments) was
+  validated against the Calibration pattern. The toy's validated claims are
+  documented in `../tiny-vla-interp/PARENT_STUDY_HANDOFF.md` (per-expectation
+  status lines E2/E6/E8/E9/E10) and `../tiny-vla-interp/EXECUTIVE_SUMMARY_10.md`
+  (P1–P3 results, CIs, decision-rule outcomes). Items 1–3 and 5 of this entry
+  are approved in full; item 4 is approved strictly as a non-confirmatory
+  addendum, executed only after the primary scoring, only on the Locked Test
+  failure subset, with a budget of at most 3 GPU hours.
+- **Exact change:**
+  1. *Rollout diagnostics (secondary metrics).* Report, alongside the
+     preregistered metrics, per-episode nearest-object identity accuracy and
+     the error/remaining-distance ratio along the rollout, replacing any
+     direction-cosine summaries. Applies only to the sensitivity section of
+     the evaluation (PREREG §11 order: sensitivity analyses last). Rationale:
+     toy Exp-8/8b showed direction cosines misreport healthy controls while
+     identity and error/distance stay informative.
+  2. *Dose × difficulty sweeps (secondary).* The confirmatory causal claim
+     stays at the frozen `patch_strength = 0.25` (PREREG §10). Additionally
+     report sign/specificity at the two unused calibration trial strengths
+     (0.5, 1.0) crossed with the eight Locked Test condition cells, in the
+     sensitivity section only. Rationale: toy Exp-7 showed steering/effect
+     curves can change sign across difficulty.
+  3. *Broken-successes ledger (secondary).* For the causal patching target
+     pairs, report paired rescue/break counts (successes turned failures,
+     failures turned successes) alongside target sign and specificity.
+     Rationale: toy Exp-3/5/10b; "broken successes" is a first-class
+     side-effect metric.
+  4. *Waypoint extension (NON-CONFIRMATORY ADDENDUM, post-scoring).* A
+     behavior-space internal steering trial on the Locked Test failure subset
+     only, α ≈ 0.3 × action scale, holding a perception-time decoded target.
+     Explicitly not part of any confirmatory claim; executed only after the
+     primary scoring and only within 3 GPU hours; if the budget is exceeded
+     the trial stops unfinished and is reported as incomplete. It is an
+     exploratory postscript (AMENDMENTS header: exploratory only).
+  5. *Data-seed policy (Month-2, no Month-1 effect).* Any future policy-
+     training pilot must run ≥3 independent train-stream seeds plus a
+     non-specific control band before claiming data-mix gains. Month-1 uses a
+     fixed public checkpoint (start.md §4) and is unaffected.
+  Implementation commits for the tooling: the Locked Test scoring entry
+  (`ops/locked_test_score.py`, byte-faithful paramterization of the frozen
+  calibration score path) and the CPU-only bookkeeping gate
+  (`ops/prepare_locked_test_artifacts.py`), plus this runbook
+  (`ops/locked_test_runbook.md`); the scoring-code tag becomes
+  `locked-test-score-v1`.
+- **Affected hypotheses/metrics:** None of the primary estimands change: the
+  primary paired log-loss and lead-time estimands, the threshold bars, the
+  decision table (start.md §12) and the confirmatory patch claim (frozen α)
+  are untouched. Items 1–3 extend the mandatory sensitivity section; item 4
+  is expressly outside the claim set; item 5 binds only Month-2.
+- **Outcome visibility:** All Calibration outcomes were visible (they are the
+  reason for this phase). No Locked Test rollout, label, score or pathway has
+  been created or inspected; the Locked Test raw set does not exist.
+- **Bias risk and mitigation:** The risk is that additional analyses become
+  selective. Mitigations: (a) all five items were approved and written before
+  any Locked Test rollout; (b) items 1–3 are confined to the last, sensitivity
+  stage of the fixed analysis order and are reported in a separate section,
+  never side-by-side with confirmatory claims; (c) item 4 cannot affect a
+  confirmatory number and carries a hard budget; (d) the tooling is committed
+  in the same commit as this entry, tagged, and the guard re-verifies every
+  frozen artifact at runtime.
+- **Implementing commit:** `<filled by commit B>` (see runbook step 0; the
+  commit adding this entry plus the tooling; the tag `calibration-locked-v1`
+  is moved to that commit with the freeze payload unchanged, per the
+  2026-08-07 precedent).

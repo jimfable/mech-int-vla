@@ -951,7 +951,7 @@ left to environment resolution.
   confirmatory number and carries a hard budget; (d) the tooling is committed
   in the same commit as this entry, tagged, and the guard re-verifies every
   frozen artifact at runtime.
-- **Implementing commit:** `<filled by commit B>` (see runbook step 0; the
+- **Implementing commit:** `886efe4e24964274cb5605aaf432bffd162ce837` (see runbook step 0; the
   commit adding this entry plus the tooling; the tag `calibration-locked-v1`
   is moved to that commit with the freeze payload unchanged, per the
   2026-08-07 precedent).

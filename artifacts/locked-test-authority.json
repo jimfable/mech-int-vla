@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "kind": "locked_test_authority",
+  "head_commit": "18d64941bc8c899b06306fbec21d1c8d2c08f2ea",
+  "tag": "prereg-locked-v1",
+  "tag_commit": "18d64941bc8c899b06306fbec21d1c8d2c08f2ea",
+  "lock_payload_sha256": "64524c974e62c2ff500c385f049ce0589ca83c220caabc396358a9053051893c",
+  "reality_gate_receipt_sha256": "fd82aae6dd90462820a90448d3d75b649578f58ce898e94b31f4a23bfb6e2566",
+  "orientation_eligibility_sha256": "3599dab95b5bbc7ee4b3e6ea1872aa21d7aced6dd3ea61d7287cb6aee863a9fb",
+  "reality_gate_lock_receipt_sha256": "17f033b935ea3f600373b5953cdc5bad5c0fd9dfd3dc1260d022acf3355f36f4",
+  "failure_event_freeze_sha256": "dd42e46b055163ca7b8ca777e0bc1a04b9907eab265f87f7234e502a19839328",
+  "calibration_manifest_sha256": "1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49",
+  "locked_test_accessed": true,
+  "guard_runtime": "local CPython / macOS prep script (prepare_locked_test_artifacts)",
+  "remote_guard_note": "the remote locked-test runner independently verifies the exact tag, clean tree, lock payload, all authority fields and the manifest digest before any episode runs; this file is guard bookkeeping only."
+}

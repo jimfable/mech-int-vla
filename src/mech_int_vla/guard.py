@@ -771,6 +771,8 @@ def _validate_artifact_hashes(repo: Path, payload: Mapping[str, Any]) -> None:
         "probe",
         "reality_gate_manifest",
         "calibration_manifest",
+        "calibration_activation_reference_arrays",
+        "calibration_activation_reference_metadata",
     }
     missing = required - hashes.keys()
     if missing:

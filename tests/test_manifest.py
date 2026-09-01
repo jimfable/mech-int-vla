@@ -18,6 +18,8 @@ POLICY = "31d453f7edd78c839a8bbc39744a292686daf0de"
 COMMIT = "a" * 40
 ARTIFACT_CONTENTS = {
     "bound_probe": b"source-bound-probe-artifact",
+    "calibration_activation_reference_arrays": b"calibration-activation-arrays",
+    "calibration_activation_reference_metadata": b"calibration-activation-metadata",
     "feature_reference_arrays": b"calibration-reference-arrays",
     "feature_reference_metadata": b"calibration-reference-metadata",
     "predictor_bundle": b"canonical-m0-m1-m2-predictor-bundle",
@@ -155,7 +157,7 @@ def test_calibration_has_eight_cells_and_balanced_cardinal_directions(
     protocol, tmp_path: Path
 ) -> None:
     task = protocol.task_order.tasks[0]
-    repo, head = ready_repo(
+    _repo, head = ready_repo(
         tmp_path, protocol.split.calibration_guard, reality_payload(task)
     )
     manifest = reconstruct_episode_manifest(

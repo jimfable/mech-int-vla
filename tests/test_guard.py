@@ -21,6 +21,8 @@ ROOT = Path(__file__).parents[1]
 POLICY = "31d453f7edd78c839a8bbc39744a292686daf0de"
 ARTIFACT_CONTENTS = {
     "bound_probe": b"source-bound-probe-artifact",
+    "calibration_activation_reference_arrays": b"calibration-activation-arrays",
+    "calibration_activation_reference_metadata": b"calibration-activation-metadata",
     "feature_reference_arrays": b"calibration-reference-arrays",
     "feature_reference_metadata": b"calibration-reference-metadata",
     "predictor_bundle": b"canonical-m0-m1-m2-predictor-bundle",
@@ -347,6 +349,18 @@ def test_locked_guard_rejects_task_and_policy_mismatches(
         (
             lambda payload: payload["artifact_hashes"].pop("calibration_manifest"),
             "artifact_hashes is missing",
+        ),
+        (
+            lambda payload: payload["artifact_hashes"].pop(
+                "calibration_activation_reference_arrays"
+            ),
+            "artifact_hashes is missing",
+        ),
+        (
+            lambda payload: payload["artifact_hashes"][
+                "calibration_activation_reference_metadata"
+            ].update({"sha256": digest("tampered-activation-reference")}),
+            "does not match the artifact bytes",
         ),
         (
             lambda payload: payload["artifact_hashes"].update(

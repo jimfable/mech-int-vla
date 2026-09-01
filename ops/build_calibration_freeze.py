@@ -19,11 +19,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from sklearn.metrics import roc_auc_score
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+SOURCE_ROOT = REPOSITORY_ROOT / "src"
+for import_root in (REPOSITORY_ROOT, SOURCE_ROOT):
+    if str(import_root) not in sys.path:
+        sys.path.insert(0, str(import_root))
 
 from mech_int_vla.config import load_protocol_config
 from mech_int_vla.feature_artifacts import (
@@ -40,6 +47,7 @@ from mech_int_vla.predictors import (
     _weighted_log_loss,
 )
 from mech_int_vla.probe_artifacts import load_bound_probe_artifact
+from ops.build_calibration_activation_reference import load_activation_reference
 
 MODEL_NAMES = ("M0", "M1", "M2")
 RELATIVE_TOLERANCE = 1e-9
@@ -48,6 +56,15 @@ EXPECTED_CALIBRATION_DATA_SHA256 = (
 )
 EXPECTED_COHORT_SHA256 = (
     "989f67f8b18dbc7349dc85bc4552cfc0d4c0bbf379b0d2fd5e33ce0ef82446e0"
+)
+EXPECTED_ACTIVATION_REFERENCE_SHA256 = (
+    "cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c"
+)
+EXPECTED_ACTIVATION_REFERENCE_METADATA_SHA256 = (
+    "b7662e629061bb10eadc1881493a68154081d6728e074ace206a576e24834697"
+)
+EXPECTED_ACTIVATION_REFERENCE_ARRAYS_SHA256 = (
+    "574bad7fb141ec93a0244bfb741eef93d203a8086ba3fc6115b80526afd899b5"
 )
 
 
@@ -104,6 +121,7 @@ def main() -> int:
     parser.add_argument("--probe", type=Path, required=True)
     parser.add_argument("--bound-probe", type=Path, required=True)
     parser.add_argument("--reference-bundle", type=Path, required=True)
+    parser.add_argument("--activation-reference", type=Path, required=True)
     parser.add_argument("--alarm", type=Path, required=True)
     parser.add_argument("--alpha-sign", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
@@ -133,6 +151,18 @@ def main() -> int:
     _require(
         reference_bundle.probe_sha256 == bound_probe.sha256,
         "Calibration feature reference is not bound to the frozen probe",
+    )
+    activation_reference = load_activation_reference(
+        args.activation_reference,
+        expected_sha256=EXPECTED_ACTIVATION_REFERENCE_SHA256,
+    )
+    _require(
+        activation_reference.path.name == EXPECTED_ACTIVATION_REFERENCE_SHA256
+        and _sha256_file(activation_reference.path / "metadata.json")
+        == EXPECTED_ACTIVATION_REFERENCE_METADATA_SHA256
+        and _sha256_file(activation_reference.path / "arrays.npz")
+        == EXPECTED_ACTIVATION_REFERENCE_ARRAYS_SHA256,
+        "Calibration activation reference differs from the frozen final artifact",
     )
 
     # --- reconstruct the OOF probabilities, bound to the frozen anchors ---
@@ -226,6 +256,12 @@ def main() -> int:
             "feature_reference_arrays": tracked(args.reference_bundle / "arrays.npz"),
             "feature_reference_metadata": tracked(
                 args.reference_bundle / "metadata.json"
+            ),
+            "calibration_activation_reference_arrays": tracked(
+                activation_reference.path / "arrays.npz"
+            ),
+            "calibration_activation_reference_metadata": tracked(
+                activation_reference.path / "metadata.json"
             ),
             "reality_gate_manifest": tracked(args.reality_gate),
             "calibration_manifest": tracked(args.manifest),

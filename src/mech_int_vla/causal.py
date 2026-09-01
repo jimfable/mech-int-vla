@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import math
 from collections import Counter
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Integral
 
@@ -193,6 +193,18 @@ class RandomSubspaceControl:
 
 
 @dataclass(frozen=True)
+class RandomSubspaceShiftControl:
+    """Memory-efficient production representation of one random control."""
+
+    orthonormal_basis: NDArray[np.float64]
+    matched_shift: NDArray[np.float64]
+    alpha: float
+    raw_projected_norm: float
+    target_projected_norm: float
+    matched_patch_norm: float
+
+
+@dataclass(frozen=True)
 class ActionEffectSummary:
     target_effect: float
     natural_target_effect: float
@@ -313,21 +325,25 @@ def patch_activation(
     )
 
 
-def norm_matched_random_subspaces(
+def iter_norm_matched_random_subspaces(
     coefficient: ArrayLike,
     activation_difference: ArrayLike,
     *,
     seed: int,
     alpha: float,
     count: int = RANDOM_CONTROL_COUNT,
-) -> tuple[RandomSubspaceControl, ...]:
-    """Generate deterministic random 2-D controls matched to probe-shift norm.
+) -> Iterator[RandomSubspaceControl]:
+    """Yield deterministic random 2-D controls matched to probe-shift norm.
 
     Each Gaussian row space is orthonormalized, producing an actual rank-two
     projector.  Its projected activation difference is then rescaled to the norm
     of the selected ``alpha * P @ difference`` patch.  The projector itself is
     retained for auditing; the rescaled ``matched_shift`` is the complete control
     intervention shift and therefore must not be multiplied by alpha again.
+
+    This streaming form is the production path.  At hidden width 720, retaining
+    all 1,000 dense 720-by-720 projectors would require more than four GiB per
+    pair even though inference consumes one shift at a time.
     """
 
     rows = np.asarray(coefficient, dtype=np.float64)
@@ -349,7 +365,6 @@ def norm_matched_random_subspaces(
     target_projected_norm = float(np.linalg.norm(projector @ difference))
     matched_patch_norm = alpha_value * target_projected_norm
     rng = np.random.default_rng(seed_value)
-    controls: list[RandomSubspaceControl] = []
     for _ in range(int(count)):
         gaussian = rng.standard_normal((difference.size, 2))
         basis, _ = np.linalg.qr(gaussian, mode="reduced")
@@ -362,17 +377,97 @@ def norm_matched_random_subspaces(
             matched = np.zeros_like(raw_shift)
         else:
             matched = raw_shift * (matched_patch_norm / raw_norm)
-        controls.append(
-            RandomSubspaceControl(
-                projector=_readonly(random_projector),
-                matched_shift=_readonly(matched),
-                alpha=alpha_value,
-                raw_projected_norm=raw_norm,
-                target_projected_norm=target_projected_norm,
-                matched_patch_norm=matched_patch_norm,
-            )
+        yield RandomSubspaceControl(
+            projector=_readonly(random_projector),
+            matched_shift=_readonly(matched),
+            alpha=alpha_value,
+            raw_projected_norm=raw_norm,
+            target_projected_norm=target_projected_norm,
+            matched_patch_norm=matched_patch_norm,
         )
-    return tuple(controls)
+
+
+def iter_norm_matched_random_shifts(
+    coefficient: ArrayLike,
+    activation_difference: ArrayLike,
+    *,
+    seed: int,
+    alpha: float,
+    count: int = RANDOM_CONTROL_COUNT,
+) -> Iterator[RandomSubspaceShiftControl]:
+    """Yield norm-matched random shifts without dense ``d``-by-``d`` projectors.
+
+    For an orthonormal basis ``Q``, ``(Q Q.T) difference`` is evaluated as
+    ``Q @ (Q.T @ difference)``.  This is algebraically identical but reduces
+    each registered 720-wide control from quadratic to linear storage and work.
+    The two basis columns are retained so every row space remains reproducible
+    and auditable from the pairing seed.
+    """
+
+    rows = np.asarray(coefficient, dtype=np.float64)
+    projector = orthogonal_probe_projector(rows)
+    difference = _vector(activation_difference, "activation_difference")
+    if difference.size != projector.shape[0]:
+        raise CausalAnalysisError("activation difference has the wrong dimension")
+    seed_value = _seed(seed)
+    alpha_value = _finite_scalar(alpha, "alpha")
+    if alpha_value not in PATCH_ALPHA_GRID:
+        raise CausalAnalysisError(
+            f"alpha must be one of the frozen values {PATCH_ALPHA_GRID}"
+        )
+    if isinstance(count, bool) or not isinstance(count, Integral) or count < 1:
+        raise CausalAnalysisError("count must be a positive integer")
+    if difference.size < 2:
+        raise CausalAnalysisError("random 2-D subspaces require dimension at least two")
+    target_projected_norm = float(np.linalg.norm(projector @ difference))
+    matched_patch_norm = alpha_value * target_projected_norm
+    rng = np.random.default_rng(seed_value)
+    for _ in range(int(count)):
+        gaussian = rng.standard_normal((difference.size, 2))
+        basis, _ = np.linalg.qr(gaussian, mode="reduced")
+        raw_shift = basis @ (basis.T @ difference)
+        raw_norm = float(np.linalg.norm(raw_shift))
+        if raw_norm == 0.0:
+            raise CausalAnalysisError("random projection unexpectedly has zero norm")
+        matched = (
+            np.zeros_like(raw_shift)
+            if matched_patch_norm == 0.0
+            else raw_shift * (matched_patch_norm / raw_norm)
+        )
+        yield RandomSubspaceShiftControl(
+            orthonormal_basis=_readonly(basis),
+            matched_shift=_readonly(matched),
+            alpha=alpha_value,
+            raw_projected_norm=raw_norm,
+            target_projected_norm=target_projected_norm,
+            matched_patch_norm=matched_patch_norm,
+        )
+
+
+def norm_matched_random_subspaces(
+    coefficient: ArrayLike,
+    activation_difference: ArrayLike,
+    *,
+    seed: int,
+    alpha: float,
+    count: int = RANDOM_CONTROL_COUNT,
+) -> tuple[RandomSubspaceControl, ...]:
+    """Return a materialized tuple of random controls for small/test callers.
+
+    Production callers executing the registered 1,000-control design should use
+    :func:`iter_norm_matched_random_subspaces` so only one dense projector exists
+    at a time.
+    """
+
+    return tuple(
+        iter_norm_matched_random_subspaces(
+            coefficient,
+            activation_difference,
+            seed=seed,
+            alpha=alpha,
+            count=count,
+        )
+    )
 
 
 def symmetry_aware_orientation_difference(

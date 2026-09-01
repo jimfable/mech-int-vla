@@ -39,38 +39,65 @@ def bound_payload(*, target: str = "[cos(s*theta_rel),sin(s*theta_rel)]"):
     }
 
 
-def reference_metadata(*, natural_activation: bool = False):
-    members = {
-        "action_scale_values": {},
-        "coverage_vectors": {},
-        "probe_norm_mean": {},
-    }
-    if natural_activation:
-        members["selected_natural_activation"] = {}
-    return {"arrays": {"members": members}}
-
-
-def test_current_frozen_artifacts_report_precise_non_proxy_blockers() -> None:
-    blockers = postscore.capability_blockers(bound_payload(), reference_metadata())
-    assert [item["code"] for item in blockers] == [
-        "rollout_diagnostic_probe_target_incompatible",
-        "supporting_layer_probe_parameters_missing",
-        "calibration_natural_activation_reference_missing",
+def test_authorized_limitations_are_not_capability_blockers_or_proxies() -> None:
+    assessment = postscore.capability_assessment(
+        bound_payload(), activation_reference_loaded=True
+    )
+    assert assessment["blockers"] == []
+    assert [item["code"] for item in assessment["limitations"]] == [
+        "unavailable_preaccess_missing_position_trace",
+        "multi_layer_support_unavailable",
     ]
-    message = "\n".join(item["message"] for item in blockers)
-    assert "orientation/error proxy is forbidden" in message
-    assert "Refitting after Locked Test access is prohibited" in message
-    assert "5-NN off-manifold" in message
+    assert assessment["limitations"][0]["reason"] == (
+        "frozen_position_decoder_and_all_object_trace_absent"
+    )
+    assert assessment["limitations"][1]["multi_layer_support_available"] is False
+    message = "\n".join(item["message"] for item in assessment["limitations"])
+    assert "must not contain" in message
+    assert "positive confirmatory causal claim is deterministically unsupported/false" in message
 
 
-def test_capability_gate_passes_only_with_explicit_frozen_evidence() -> None:
-    bound = bound_payload(target="relative_primary_object_position_xyz")
-    bound["numerical_probe"]["metadata"]["supporting_layer_parameters"] = {
-        "vlm_context": {}, "early_expert": {}, "late_expert": {}
-    }
-    assert postscore.capability_blockers(
-        bound, reference_metadata(natural_activation=True)
-    ) == []
+def test_activation_reference_remains_the_only_hard_capability_blocker() -> None:
+    assessment = postscore.capability_assessment(
+        bound_payload(), activation_reference_loaded=False
+    )
+    assert [item["code"] for item in assessment["blockers"]] == [
+        "calibration_natural_activation_reference_missing"
+    ]
+
+
+def test_activation_reference_loader_enforces_exact_cross_bindings(monkeypatch) -> None:
+    loaded = type(
+        "Loaded",
+        (),
+        {
+            "metadata": {
+                "counts": {"episodes": 160, "rows": 9455, "width": 720},
+                "source": {
+                    "bound_probe_sha256": SHA,
+                    "feature_reference_sha256": "b" * 64,
+                },
+                "selection": {"labels_used": False, "refit_performed": False},
+            }
+        },
+    )()
+    module = type(
+        "Module", (), {"load_activation_reference": staticmethod(lambda *a, **k: loaded)}
+    )
+    monkeypatch.setattr(postscore, "_load_activation_reference_module", lambda: module)
+    activation_sha = postscore.CALIBRATION_ACTIVATION_REFERENCE_SHA256
+    assert postscore._load_activation_reference(
+        Path("natural"), activation_sha,
+        bound_probe_sha256=SHA,
+        calibration_reference_sha256="b" * 64,
+    ) is loaded
+    loaded.metadata["counts"]["rows"] = 9454
+    with pytest.raises(postscore.PostscoreError, match="9455 x 720"):
+        postscore._load_activation_reference(
+            Path("natural"), activation_sha,
+            bound_probe_sha256=SHA,
+            calibration_reference_sha256="b" * 64,
+        )
 
 
 def test_cost_receipt_is_strict_deterministic_and_evaluator_compatible(tmp_path: Path) -> None:
@@ -157,9 +184,12 @@ def test_preflight_never_starts_gpu_work_when_capability_is_blocked(monkeypatch)
     monkeypatch.setattr(
         postscore,
         "validate_scientific_inputs",
-        lambda **kwargs: [
-            {"code": "undefined_metric", "message": "required evidence is not frozen"}
-        ],
+        lambda **kwargs: {
+            "limitations": [],
+            "blockers": [
+                {"code": "undefined_metric", "message": "required evidence is not frozen"}
+            ],
+        },
     )
     namespace = type(
         "Args",
@@ -172,6 +202,10 @@ def test_preflight_never_starts_gpu_work_when_capability_is_blocked(monkeypatch)
             "bound_probe": Path("bound.json"), "bound_probe_sha256": SHA,
             "calibration_reference": Path("reference"),
             "calibration_reference_sha256": SHA,
+            "calibration_activation_reference": Path("activation-reference"),
+            "calibration_activation_reference_sha256": SHA,
+            "calibration_freeze": Path("calibration-freeze.json"),
+            "calibration_freeze_sha256": SHA,
         },
     )()
     with pytest.raises(postscore.PostscoreError, match="undefined_metric"):

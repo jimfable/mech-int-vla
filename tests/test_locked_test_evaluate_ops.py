@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from mech_int_vla.config import SplitName, TaskSpec
@@ -16,6 +18,15 @@ SPEC = importlib.util.spec_from_file_location("locked_test_evaluate", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 evaluate_ops = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(evaluate_ops)
+
+CAUSAL_SCRIPT = ROOT / "ops" / "locked_test_causal.py"
+CAUSAL_SPEC = importlib.util.spec_from_file_location(
+    "locked_test_causal_for_evaluator_contract", CAUSAL_SCRIPT
+)
+assert CAUSAL_SPEC is not None and CAUSAL_SPEC.loader is not None
+causal_ops = importlib.util.module_from_spec(CAUSAL_SPEC)
+sys.modules[CAUSAL_SPEC.name] = causal_ops
+CAUSAL_SPEC.loader.exec_module(causal_ops)
 
 
 SHA = "a" * 64
@@ -142,10 +153,20 @@ def inputs(*, invalid: tuple[str, ...] = ()):
         for cell in range(8)
     ]
     causal = {
-        "confirmatory": {"status": "complete", "specificity_passes": True}
+        "selected_layer_summary": {"specificity_passes": True},
+        "supporting_layers": {"multi_layer_support_available": False},
+        "confirmatory": {"status": "unsupported", "succeeds": False},
     }
     sensitivity = {
-        "rollout_diagnostics": {}, "dose_by_difficulty": [], "broken_successes": {}
+        "rollout_diagnostics": {
+            "status": "unavailable_preaccess_missing_position_trace",
+            "reason": "frozen_position_decoder_and_all_object_trace_absent",
+        },
+        "dose_by_difficulty": [],
+        "broken_successes": {
+            "status": "unavailable",
+            "reason": "patched_closed_loop_outcome_not_defined",
+        },
     }
     cost = {"stages": [], "budget_gate_stops": []}
     return frozen, raw, cells, prediction_payload, causal, sensitivity, cost
@@ -177,6 +198,14 @@ def test_report_has_exact_runbook_order_and_deterministic_bytes() -> None:
     assert [section["number"] for section in first["sections"]] == list(range(1, 11))
     assert tuple(section["title"] for section in first["sections"]) == evaluate_ops.SECTION_TITLES
     assert evaluate_ops._canonical(first) == evaluate_ops._canonical(second)
+    diagnostics = first["sections"][8]["subsections"][0]["result"]
+    assert diagnostics == {
+        "status": "unavailable_preaccess_missing_position_trace",
+        "reason": "frozen_position_decoder_and_all_object_trace_absent",
+    }
+    decision = first["sections"][9]["measured"]
+    assert decision["multi_layer_support_available"] is False
+    assert decision["positive_confirmatory_causal_claim_succeeds"] is False
     assert first["evaluation_protocol"] == {
         "bootstrap_seed": 260803,
         "bootstrap_replicates": 50,
@@ -276,3 +305,280 @@ def test_missing_required_receipt_stops_before_raw_or_metrics(monkeypatch, tmp_p
             cost_receipt_path=paths["cost"], cost_receipt_sha256=SHA,
         )
     assert seen == ["manifest.json", "predictions.json", "freeze.json", "gate.json", "causal.json"]
+
+
+def sensitivity_contract(*, diagnostic_status: str) -> dict:
+    return {
+        "schema_version": 1,
+        "kind": "locked_test_sensitivity_receipt",
+        "source": {
+            "manifest_sha256": SHA,
+            "prediction_receipt_sha256": "b" * 64,
+            "causal_receipt_sha256": "c" * 64,
+            "alphas": [0.5, 1.0],
+            "pairing_seeds": [260803, 260804, 260805],
+            "patch_rule": "same_selected_layer_pair_plan_no_refit",
+        },
+        "evidence_hashes": [],
+        "dose_evidence": [],
+        "dose_by_difficulty": [],
+        "rollout_diagnostics": {
+            "status": diagnostic_status,
+            "reason": "frozen_position_decoder_and_all_object_trace_absent",
+        },
+        "broken_successes": {
+            "status": "unavailable",
+            "reason": "patched_closed_loop_outcome_not_defined",
+        },
+    }
+
+
+def test_position_diagnostic_unavailable_marker_is_exact_and_nonblocking(tmp_path: Path) -> None:
+    with pytest.raises(
+        evaluate_ops.LockedTestEvaluationError,
+        match="exact pre-access missing-position-trace marker",
+    ):
+        evaluate_ops._validate_sensitivity_receipt(
+            sensitivity_contract(diagnostic_status="unavailable"),
+            tmp_path / "sensitivity.json", SHA, "b" * 64, "c" * 64,
+        )
+
+
+def test_producer_receipts_and_evidence_are_evaluator_compatible(tmp_path: Path) -> None:
+    frozen, _, _, predictions, *_ = inputs()
+    prediction_source = predictions["source"]
+    raw_by_episode = {}
+    for record in predictions["records"]:
+        hashes = record["source_hashes"]
+        raw_by_episode[record["episode_id"]] = {
+            "episode_id": record["episode_id"],
+            "raw_metadata_sha256": hashes["raw_metadata_sha256"],
+            "raw_trajectory_sha256": hashes["raw_trajectory_sha256"],
+        }
+    raw_inventory = [raw_by_episode[name] for name in sorted(raw_by_episode)]
+    causal_source = {
+        "manifest_sha256": frozen.sha256,
+        "prediction_receipt_sha256": SHA,
+        "raw_inventory_sha256": evaluate_ops._sha256(
+            evaluate_ops._canonical(raw_inventory)
+        ),
+        "score_allocation_sha256": prediction_source["score_allocation_sha256"],
+        "bound_probe_sha256": prediction_source["bound_probe_sha256"],
+        "calibration_reference_sha256": prediction_source["reference_bundle_sha256"],
+        "calibration_activation_reference_sha256": (
+            "cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c"
+        ),
+        "alpha": 0.25,
+        "pairing_seeds": [260803, 260804, 260805],
+        "random_subspaces_per_pair": 1000,
+        "matched_donor_rule": "orientation_difference_degrees < 5",
+        "pair_selection_rule": "outcome_blind_frozen_state_matching",
+    }
+    causal_source_sha = evaluate_ops._sha256(evaluate_ops._canonical(causal_source))
+    causal_rows = []
+    causal_pointers = []
+    causal_hashes = []
+    causal_staging = tmp_path / "causal.incomplete"
+    (causal_staging / "evidence").mkdir(parents=True)
+    controls = np.linspace(-1.0, 1.0, 1000)
+    for index in range(60):
+        recipient = frozen.episodes[index]
+        donor = frozen.episodes[(index + 1) % len(frozen.episodes)]
+        causal_valid = index != 59
+        row = {
+            "schema_version": 1,
+            "kind": "locked_test_causal_pair_evidence",
+            "source_sha256": causal_source_sha,
+            "pair": {
+                "pair_index": index,
+                "seed": [260803, 260804, 260805][index // 20],
+                "condition_index": recipient.condition_index,
+                "base_init_state_id": recipient.base_init_state_id,
+                "recipient_id": f"{recipient.episode_id}@0000",
+                "donor_id": f"{donor.episode_id}@0000" if causal_valid else None,
+                "orientation_difference_degrees": 45.0 if causal_valid else None,
+                "valid": causal_valid,
+                **(
+                    {}
+                    if causal_valid
+                    else {"invalid_reason": "no_eligible_confirmatory_donor"}
+                ),
+            },
+            "selected_patch": (
+                {
+                    "alpha": 0.25,
+                    "sign_correct": True,
+                    "donor_aligned_target_effect": 2.0,
+                    "off_target_ratio": 0.2,
+                    "off_target_ratio_status": "finite",
+                }
+                if causal_valid else None
+            ),
+            "off_manifold": (
+                {
+                    "patched_five_nn_distance": 1.0,
+                    "natural_95th_percentile": 2.0,
+                    "off_manifold": False,
+                }
+                if causal_valid else None
+            ),
+            "matched_control": (
+                {
+                    "donor_id": f"{donor.episode_id}@0000",
+                    "orientation_difference_degrees": 4.999,
+                    "sign_correct": False,
+                    "donor_aligned_target_effect": 0.0,
+                }
+                if causal_valid else None
+            ),
+            "random_controls": (
+                [
+                    {
+                        "control_index": control_index,
+                        "donor_aligned_target_effect": float(effect),
+                    }
+                    for control_index, effect in enumerate(controls)
+                ]
+                if causal_valid else []
+            ),
+        }
+        payload = causal_ops._canonical(row)
+        digest = causal_ops._sha256(payload)
+        (causal_staging / "evidence" / f"{digest}.json").write_bytes(payload)
+        causal_rows.append(row)
+        causal_hashes.append(digest)
+        causal_pointers.append(
+            {
+                "pair_index": index,
+                "seed": row["pair"]["seed"],
+                "condition_index": recipient.condition_index,
+                "base_init_state_id": recipient.base_init_state_id,
+                    "valid": causal_valid,
+                "evidence_sha256": digest,
+                "evidence_path": f"evidence/{digest}.json",
+            }
+        )
+    causal_receipt = {
+        "schema_version": 1,
+        "kind": "locked_test_causal_patching_receipt",
+        "source": causal_source,
+        "evidence_hashes": causal_hashes,
+        "pairs": causal_pointers,
+        "selected_layer_summary": causal_ops.summarize_causal_evidence(causal_rows),
+        "supporting_layers": {
+            "status": "unavailable",
+            "reason": "frozen_supporting_layer_coefficients_absent",
+            "multi_layer_support_available": False,
+            "layer_support_passes": False,
+        },
+        "confirmatory": {
+            "status": "unsupported",
+            "succeeds": False,
+            "reason": "frozen_supporting_layer_coefficients_absent",
+        },
+    }
+    causal_path, causal_sha = causal_ops._publish_tree(
+        tmp_path / "causal", receipt_name="causal.json",
+        receipt=causal_receipt, staging=causal_staging,
+    )
+    causal_receipt = causal_ops._read_canonical_json(causal_path, causal_sha)
+    evaluate_ops._validate_causal_receipt(
+        causal_receipt, causal_path, frozen, frozen.sha256, SHA, predictions
+    )
+
+    sensitivity_source = {
+        "manifest_sha256": frozen.sha256,
+        "prediction_receipt_sha256": SHA,
+        "causal_receipt_sha256": causal_sha,
+        "alphas": [0.5, 1.0],
+        "pairing_seeds": [260803, 260804, 260805],
+        "patch_rule": "same_selected_layer_pair_plan_no_refit",
+    }
+    sensitivity_source_sha = evaluate_ops._sha256(
+        evaluate_ops._canonical(sensitivity_source)
+    )
+    sensitivity_rows = []
+    sensitivity_pointers = []
+    sensitivity_hashes = []
+    sensitivity_staging = tmp_path / "sensitivity.incomplete"
+    (sensitivity_staging / "evidence").mkdir(parents=True)
+    for index, causal_row in enumerate(causal_rows):
+        pair = causal_row["pair"]
+        dose_valid = pair["valid"] and pair["condition_index"] != 7
+        dose_invalid_reason = (
+            pair.get("invalid_reason", "no_eligible_matched_donor")
+            if not dose_valid else None
+        )
+        row = {
+            "schema_version": 1,
+            "kind": "locked_test_sensitivity_pair_evidence",
+            "source_sha256": sensitivity_source_sha,
+            "pair": {
+                "pair_index": index,
+                "seed": pair["seed"],
+                "condition_index": pair["condition_index"],
+                "base_init_state_id": pair["base_init_state_id"],
+                "valid": dose_valid,
+                **({} if dose_valid else {"invalid_reason": dose_invalid_reason}),
+            },
+            "alphas": (
+                [
+                    {
+                        "alpha": alpha,
+                        "sign_correct": True,
+                        "donor_aligned_target_effect": alpha,
+                        "off_target_ratio": 0.2,
+                        "off_target_ratio_status": "finite",
+                    }
+                    for alpha in (0.5, 1.0)
+                ]
+                if dose_valid
+                else None
+            ),
+        }
+        payload = causal_ops._canonical(row)
+        digest = causal_ops._sha256(payload)
+        (sensitivity_staging / "evidence" / f"{digest}.json").write_bytes(payload)
+        sensitivity_rows.append(row)
+        sensitivity_hashes.append(digest)
+        sensitivity_pointers.append(
+            {
+                "pair_index": index,
+                "evidence_sha256": digest,
+                "evidence_path": f"evidence/{digest}.json",
+            }
+        )
+    sensitivity_receipt = {
+        "schema_version": 1,
+        "kind": "locked_test_sensitivity_receipt",
+        "source": sensitivity_source,
+        "evidence_hashes": sensitivity_hashes,
+        "dose_evidence": sensitivity_pointers,
+        "dose_by_difficulty": causal_ops.summarize_dose_evidence(sensitivity_rows),
+        "rollout_diagnostics": {
+            "status": "unavailable_preaccess_missing_position_trace",
+            "reason": "frozen_position_decoder_and_all_object_trace_absent",
+        },
+        "broken_successes": {
+            "status": "unavailable",
+            "reason": "patched_closed_loop_outcome_not_defined",
+        },
+    }
+    sensitivity_path, _ = causal_ops._publish_tree(
+        tmp_path / "sensitivity", receipt_name="sensitivity.json",
+        receipt=sensitivity_receipt, staging=sensitivity_staging,
+    )
+    sensitivity_receipt = causal_ops._read_canonical_json(sensitivity_path)
+    evaluate_ops._validate_sensitivity_receipt(
+        sensitivity_receipt, sensitivity_path, frozen.sha256, SHA, causal_sha
+    )
+    with pytest.raises(
+        evaluate_ops.LockedTestEvaluationError,
+        match="60 dose-evidence rows",
+    ):
+        evaluate_ops._validate_sensitivity_receipt(
+            sensitivity_contract(
+                diagnostic_status="unavailable_preaccess_missing_position_trace"
+            ),
+            tmp_path / "sensitivity.json", SHA, "b" * 64, "c" * 64,
+        )

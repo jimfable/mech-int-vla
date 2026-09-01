@@ -33,10 +33,12 @@ PYTHONPATH=src uv run --isolated --no-project --python 3.12 \
 ```
 
 Before proceeding to section 1, run the mandatory pre-access capability gate
-in section 5.0. With the current freeze it exits nonzero for the three recorded
-scientific-evidence blockers, so sections 1–4 are currently prohibited even
-after infrastructure is restored. This ordering prevents spending collection
-or scoring GPU time before the complete preregistered analysis is executable.
+in section 5.0. It must pass after verifying the content-addressed natural
+Calibration activation reference. Its two authorized limitation records (the
+unavailable 9a position trace and unavailable supporting-layer coefficients)
+are required report semantics, not blockers and not permission to omit
+selected-layer patching. This ordering prevents spending collection or scoring
+GPU time while any unapproved capability blocker remains.
 
 ## 1. Instance start + environment verification
 
@@ -200,20 +202,24 @@ cd /Users/fynnvanriessen/Developer/research/mech-int-vla
     --bound-probe artifacts/calibration-analysis-rescore-001/bound-probe/e94269a149491d30a8ba52e8d66c816c87ce489e2d37f0b4179b9f4ead5a1146/bound_probe.json \
     --bound-probe-sha256 e94269a149491d30a8ba52e8d66c816c87ce489e2d37f0b4179b9f4ead5a1146 \
     --calibration-reference artifacts/calibration-features-rescore-001/reference/4441c760eb1bd4acb9ff43dceb70986a0848f96c77ddfff19f836022b2b39da1 \
-    --calibration-reference-sha256 4441c760eb1bd4acb9ff43dceb70986a0848f96c77ddfff19f836022b2b39da1
+    --calibration-reference-sha256 4441c760eb1bd4acb9ff43dceb70986a0848f96c77ddfff19f836022b2b39da1 \
+    --calibration-activation-reference artifacts/calibration-activation-reference-001/cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c \
+    --calibration-activation-reference-sha256 cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c
 ```
 
-With the current freeze this command intentionally stops before GPU work and
-reports three exact blockers: the frozen probe targets circular relative
-orientation rather than object position required by 9a; no executable frozen
-coefficients exist for the two non-selected supporting locations required by
-PREREG §10; and the feature reference contains no natural Calibration
-activation matrix for the activation-space 5-NN off-manifold threshold. Do not
-replace these fields with angular/coverage proxies and do not refit after
-Locked Test access. Until an explicitly approved pre-access amendment supplies
-and freezes the missing evidence, **sections 1–4 must not be started**. A
-nonzero capability-gate exit is a protocol blocker, not permission to omit
-sections 7 or 9.
+This command must pass. It validates the immutable full-Calibration natural
+activation reference (160 episodes, 9,455 rows, width 720, fixed natural 5-NN
+geometry) and reports two prospectively authorized limitations. First, 9a is
+reported exactly as `unavailable_preaccess_missing_position_trace`, reason
+`frozen_position_decoder_and_all_object_trace_absent`; no orientation,
+coverage, or other proxy number is permitted. Second, missing frozen
+non-selected-layer coefficients are reported as
+`multi_layer_support_available=false`, reason
+`frozen_supporting_layer_coefficients_absent`. Selected-layer patching remains
+mandatory and reportable, while the positive confirmatory multi-layer causal
+claim is deterministically unsupported/false. These two limitation markers do
+not block sections 1–9. A missing/malformed activation reference, a hash
+mismatch, label use, refitting, or any additional blocker does.
 
 After a future valid freeze and completed scoring, the full content-binding
 preflight is:
@@ -232,13 +238,98 @@ preflight is:
     --bound-probe "$BOUND_PROBE_PATH" \
     --bound-probe-sha256 "$BOUND_PROBE_SHA256" \
     --calibration-reference "$CALIBRATION_REFERENCE_PATH" \
-    --calibration-reference-sha256 "$CALIBRATION_REFERENCE_SHA256"
+    --calibration-reference-sha256 "$CALIBRATION_REFERENCE_SHA256" \
+    --calibration-activation-reference /workspace/locked-test-checkout/artifacts/calibration-activation-reference-001/cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c \
+    --calibration-activation-reference-sha256 cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c \
+    --calibration-freeze /workspace/locked-test-checkout/locks/calibration_frozen.json \
+    --calibration-freeze-sha256 eb39e6952ad8864c8f9ae88a07f382b0efcbe18fd36a1221b67fe9f59106bed9
 ```
 
 The variables are copied byte-for-byte from the canonical Locked Test scoring
 receipt; unset variables are a hard stop. This checks the manifest/prediction,
 all 160 Raw directories, every valid score sidecar, feature cohort, bound probe,
-and Calibration reference content links before intervention work.
+Calibration feature reference, final Calibration freeze, and the full natural
+activation reference content links before intervention work. The final freeze
+must bind the activation-reference `metadata.json` and `arrays.npz`; the
+reference's predecessor-freeze field is provenance and must not be substituted
+for the final freeze hash.
+
+Run the selected-layer GPU producer. The command is resumable: it verifies the
+pair plan and every completed content-addressed pair checkpoint before
+continuing. Pair selection consumes frozen states and source hashes, never
+outcomes or prediction labels.
+
+```bash
+/venv/main/bin/python \
+    /workspace/locked-test-checkout/ops/locked_test_causal.py causal \
+    --repo-root /workspace/locked-test-checkout \
+    --environment-lock /workspace/locked-test-checkout/environment.lock \
+    --cache-dir /workspace/hf-cache \
+    --manifest /workspace/runstate/locked-test-manifest-1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49.json \
+    --manifest-sha256 1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49 \
+    --predictions "$PREDICTION_RECEIPT_PATH" \
+    --predictions-sha256 "$PREDICTION_RECEIPT_SHA256" \
+    --raw-root /workspace/research-artifacts/raw \
+    --score-root /workspace/research-artifacts/scores \
+    --feature-cohort "$FEATURE_COHORT_PATH" \
+    --feature-cohort-sha256 "$FEATURE_COHORT_SHA256" \
+    --bound-probe "$BOUND_PROBE_PATH" \
+    --bound-probe-sha256 "$BOUND_PROBE_SHA256" \
+    --calibration-feature-reference "$CALIBRATION_REFERENCE_PATH" \
+    --calibration-feature-reference-sha256 "$CALIBRATION_REFERENCE_SHA256" \
+    --calibration-activation-reference /workspace/locked-test-checkout/artifacts/calibration-activation-reference-001/cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c \
+    --calibration-activation-reference-sha256 cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c \
+    --output-root /workspace/research-artifacts/postscore/causal
+```
+
+Copy `receipt_path` and `receipt_sha256` from the final
+`locked_test_causal_complete` event into `CAUSAL_RECEIPT_PATH` and
+`CAUSAL_RECEIPT_SHA256`. The receipt must contain 60 hash-addressed Pair
+Evidence files. Every valid pair contains selected alpha 0.25, a strict <5°
+matched control, Calibration-reference 5-NN evidence and controls indexed
+exactly 0..999. Missing supporting-layer coefficients do not skip this run;
+they force the confirmatory result to `unsupported` and `succeeds=false`.
+If an outcome-blind seed has fewer than 20 eligible confirmatory donors, its
+remaining deterministic slots carry
+`invalid_reason=no_eligible_confirmatory_donor` and null donor/orientation;
+missing <5° controls carry `no_eligible_matched_donor`. Such slots contain no
+scientific numbers and count toward the 60 attempts, not the valid estimand.
+
+Then run the two-dose sensitivity producer against those exact causal bytes:
+
+```bash
+/venv/main/bin/python \
+    /workspace/locked-test-checkout/ops/locked_test_causal.py sensitivity \
+    --repo-root /workspace/locked-test-checkout \
+    --environment-lock /workspace/locked-test-checkout/environment.lock \
+    --cache-dir /workspace/hf-cache \
+    --manifest /workspace/runstate/locked-test-manifest-1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49.json \
+    --manifest-sha256 1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49 \
+    --predictions "$PREDICTION_RECEIPT_PATH" \
+    --predictions-sha256 "$PREDICTION_RECEIPT_SHA256" \
+    --raw-root /workspace/research-artifacts/raw \
+    --score-root /workspace/research-artifacts/scores \
+    --feature-cohort "$FEATURE_COHORT_PATH" \
+    --feature-cohort-sha256 "$FEATURE_COHORT_SHA256" \
+    --bound-probe "$BOUND_PROBE_PATH" \
+    --bound-probe-sha256 "$BOUND_PROBE_SHA256" \
+    --calibration-feature-reference "$CALIBRATION_REFERENCE_PATH" \
+    --calibration-feature-reference-sha256 "$CALIBRATION_REFERENCE_SHA256" \
+    --calibration-activation-reference /workspace/locked-test-checkout/artifacts/calibration-activation-reference-001/cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c \
+    --calibration-activation-reference-sha256 cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c \
+    --causal-receipt "$CAUSAL_RECEIPT_PATH" \
+    --causal-receipt-sha256 "$CAUSAL_RECEIPT_SHA256" \
+    --output-root /workspace/research-artifacts/postscore/sensitivity
+```
+
+Copy the final `locked_test_sensitivity_complete` path/digest into
+`SENSITIVITY_RECEIPT_PATH`/`SENSITIVITY_RECEIPT_SHA256`. This run must publish
+60 dose-evidence files and the numerical 0.5/1.0 × cells 0–7 grid. It also
+publishes the exact authorized 9a unavailable marker; it never fabricates a
+nearest-object/error-distance diagnostic.
+If a cell has zero valid pairs, the row remains mandatory and auditably reports
+its attempted `pair_indices`, `valid_pairs=0`, zero sign count, null rates and
+medians, `unavailable_no_valid_pairs`, and `specificity_passes=false`.
 
 Cost evidence is the only post-score receipt that may be operator supplied.
 Publish it after recording all five stages, in this exact order and unit format:
@@ -279,21 +370,26 @@ Output is a single report with sections in this exact order:
 7. **Causal patching** at FROZEN alpha 0.25: 60 pairs, 3 pairing seeds; target
    sign (>50% with 90% cluster interval above 50%), specificity (off-target
    ratio ≤0.25 median), 1000 norm-matched random 2-D subspaces, off-manifold
-   check, matched-donor control (<5°). <30 valid pairs → inconclusive.
+   check, matched-donor control (<5°). <30 valid pairs → selected-layer
+   inconclusive. Because no frozen supporting-layer coefficients exist,
+   `multi_layer_support_available=false` and the positive confirmatory causal
+   claim is always `unsupported`/false; selected-layer evidence is still fully
+   reported.
 8. **Cost accounting:** GPU hours, instance charges, per-stage wall times,
    any budget-gate stops.
 9. **Sensitivity (amendment items 1–3, separate section):**
-   9a. rollout diagnostics: nearest-object identity accuracy + error/distance
-       per step/cell;
+   9a. exact status `unavailable_preaccess_missing_position_trace`, reason
+       `frozen_position_decoder_and_all_object_trace_absent`; no proxy metrics;
    9b. patching dose × difficulty: alphas {0.5, 1.0} × 8 cells (sign +
        specificity, same definitions);
-   9c. broken-successes ledger for the total 60-pair set.
+   9c. exact status `unavailable`, reason
+       `patched_closed_loop_outcome_not_defined`; no outcome proxy.
 10. **Decision-table mapping (start.md §12), pre-stated expectations:**
     toy evidence predicts M2 ≈ M1 (redundancy: internals substitute
     privileged state) with M2 ≫ M0 — reported exactly as measured, whatever
     the outcome; "weder Lift noch Spezifität" → Negativbefund-Publizierpfad.
 
-Once approved producers have created the immutable causal and sensitivity
+After the two commands above have created the immutable causal and sensitivity
 receipts, run the final evaluator exactly once:
 
 ```bash
@@ -305,7 +401,7 @@ receipts, run the final evaluator exactly once:
     --predictions "$PREDICTION_RECEIPT_PATH" \
     --predictions-sha256 "$PREDICTION_RECEIPT_SHA256" \
     --calibration-freeze /workspace/locked-test-checkout/locks/calibration_frozen.json \
-    --calibration-freeze-sha256 52412cfbc37b7fa8bf07b5a5df07e23aac9001d2961ceef05f45aa80ea506c2e \
+    --calibration-freeze-sha256 eb39e6952ad8864c8f9ae88a07f382b0efcbe18fd36a1221b67fe9f59106bed9 \
     --reality-gate-lock /workspace/locked-test-checkout/locks/reality_gate_frozen.json \
     --reality-gate-lock-sha256 4e0d4d5cb7e42874bed4e1f93a3e016a5a248803d06d0acc9d3fb8e435e9a151 \
     --causal-receipt "$CAUSAL_RECEIPT_PATH" \

@@ -30,6 +30,7 @@ if str(_REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from mech_int_vla.artifacts import RolloutArtifact, load_rollout_artifact
+from mech_int_vla.causal import cluster_bootstrap_rate_interval
 from mech_int_vla.config import SplitName, TaskSpec
 from mech_int_vla.evaluation import (
     PRIMARY_STEPS,
@@ -57,6 +58,13 @@ BOOTSTRAP_REPLICATES = 10_000
 BOOTSTRAP_CONFIDENCE = 0.90
 MODELS = ("M0", "M1", "M2")
 PAIRING_SEEDS = (260_803, 260_804, 260_805)
+POSITION_DIAGNOSTIC_STATUS = "unavailable_preaccess_missing_position_trace"
+POSITION_DIAGNOSTIC_REASON = "frozen_position_decoder_and_all_object_trace_absent"
+SUPPORTING_LAYER_REASON = "frozen_supporting_layer_coefficients_absent"
+BROKEN_SUCCESS_REASON = "patched_closed_loop_outcome_not_defined"
+CALIBRATION_ACTIVATION_REFERENCE_SHA256 = (
+    "cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c"
+)
 VALIDITY_CATEGORIES = (
     "reject_nan",
     "workspace",
@@ -156,6 +164,12 @@ def _load_addressed_json(
     if directory_addressed and path.parent.name != expected_sha256:
         raise LockedTestEvaluationError(
             f"content-addressed directory for {path} is not named {expected_sha256}"
+        )
+    if directory_addressed and (
+        path.parent.is_symlink() or not path.parent.is_dir()
+    ):
+        raise LockedTestEvaluationError(
+            f"content-addressed directory for {path} is absent or unsafe"
         )
     return value
 
@@ -426,12 +440,68 @@ def _validate_calibration_freeze(
     return result
 
 
+def _relative_evidence(
+    receipt_path: Path, relative_path: Any, expected_sha256: str, where: str
+) -> Mapping[str, Any]:
+    if not isinstance(relative_path, str) or not relative_path:
+        raise LockedTestEvaluationError(f"{where} evidence path must be nonempty")
+    relative = Path(relative_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise LockedTestEvaluationError(f"{where} evidence path escapes receipt directory")
+    expected = Path("evidence") / f"{expected_sha256}.json"
+    if relative != expected:
+        raise LockedTestEvaluationError(
+            f"{where} evidence must use evidence/<content-sha256>.json"
+        )
+    evidence_root = receipt_path.parent / "evidence"
+    if evidence_root.is_symlink() or not evidence_root.is_dir():
+        raise LockedTestEvaluationError(f"{where} evidence directory is absent or unsafe")
+    path = receipt_path.parent / relative
+    value, raw = _strict_json_bytes(path)
+    if _sha256(raw) != expected_sha256 or raw != _canonical(value):
+        raise LockedTestEvaluationError(f"{where} evidence digest/canonical bytes differ")
+    return value
+
+
+def _validated_ratio(value: Any, status: Any, where: str) -> float:
+    if status == "finite":
+        if value is None:
+            raise LockedTestEvaluationError(f"{where} finite ratio is absent")
+        return _finite(value, where, lower=0)
+    if status == "infinite_zero_yaw_effect" and value is None:
+        return math.inf
+    raise LockedTestEvaluationError(f"{where} ratio/status encoding is invalid")
+
+
 def _validate_causal_receipt(
-    payload: Mapping[str, Any], manifest_sha: str, prediction_sha: str
+    payload: Mapping[str, Any],
+    receipt_path: Path,
+    manifest: Manifest,
+    manifest_sha: str,
+    prediction_sha: str,
+    prediction_payload: Mapping[str, Any],
 ) -> None:
     if payload.get("schema_version") != 1 or payload.get("kind") != "locked_test_causal_patching_receipt":
         raise LockedTestEvaluationError("causal patching receipt has the wrong schema or kind")
-    source = _mapping(payload.get("source"), "causal.source")
+    _exact_keys(
+        payload,
+        {
+            "schema_version", "kind", "source", "evidence_hashes", "pairs",
+            "selected_layer_summary", "supporting_layers", "confirmatory",
+        },
+        "causal",
+    )
+    source = _exact_keys(
+        payload.get("source"),
+        {
+            "manifest_sha256", "prediction_receipt_sha256", "raw_inventory_sha256",
+            "score_allocation_sha256", "bound_probe_sha256",
+            "calibration_reference_sha256", "calibration_activation_reference_sha256",
+            "alpha", "pairing_seeds", "random_subspaces_per_pair",
+            "matched_donor_rule", "pair_selection_rule",
+        },
+        "causal.source",
+    )
     if source.get("manifest_sha256") != manifest_sha or source.get("prediction_receipt_sha256") != prediction_sha:
         raise LockedTestEvaluationError("causal patching receipt is bound to different inputs")
     if _finite(source.get("alpha"), "causal.source.alpha") != 0.25:
@@ -439,49 +509,400 @@ def _validate_causal_receipt(
     if source.get("pairing_seeds") != list(PAIRING_SEEDS):
         raise LockedTestEvaluationError("causal receipt did not use all three pairing seeds")
     if _integer(source.get("random_subspaces_per_pair"), "random_subspaces_per_pair", lower=1) != 1000:
-        raise LockedTestEvaluationError("causal receipt did not use 1000 random subspaces")
-    if _finite(source.get("matched_donor_max_degrees"), "matched_donor_max_degrees") != 5.0:
-        raise LockedTestEvaluationError("causal receipt did not use the <5 degree control")
+        raise LockedTestEvaluationError("causal receipt did not use 1000 indexed controls per pair")
     if source.get("matched_donor_rule") != "orientation_difference_degrees < 5":
         raise LockedTestEvaluationError("causal receipt did not use a strict <5 degree rule")
-    result = _mapping(payload.get("confirmatory"), "causal.confirmatory")
-    attempted = _integer(result.get("attempted_pairs"), "attempted_pairs")
-    valid = _integer(result.get("valid_pairs"), "valid_pairs")
-    if attempted != 60 or valid > attempted:
-        raise LockedTestEvaluationError("causal receipt must account for the fixed 60-pair set")
-    expected_status = "inconclusive" if valid < 30 else "complete"
-    if result.get("status") != expected_status:
-        raise LockedTestEvaluationError("causal status disagrees with the 30-pair minimum")
+    if source.get("pair_selection_rule") != "outcome_blind_frozen_state_matching":
+        raise LockedTestEvaluationError("causal pair selection is not explicitly outcome blind")
+    for name in (
+        "raw_inventory_sha256", "calibration_activation_reference_sha256",
+    ):
+        if not _is_sha256(source.get(name)):
+            raise LockedTestEvaluationError(f"causal.source.{name} is not a digest")
+    if (
+        source["calibration_activation_reference_sha256"]
+        != CALIBRATION_ACTIVATION_REFERENCE_SHA256
+    ):
+        raise LockedTestEvaluationError(
+            "causal receipt does not use the final frozen Calibration activation reference"
+        )
+    prediction_source = _mapping(prediction_payload.get("source"), "predictions.source")
+    expected_prediction_bindings = {
+        "score_allocation_sha256": "score_allocation_sha256",
+        "bound_probe_sha256": "bound_probe_sha256",
+        "calibration_reference_sha256": "reference_bundle_sha256",
+    }
+    for causal_name, prediction_name in expected_prediction_bindings.items():
+        if source.get(causal_name) != prediction_source.get(prediction_name):
+            raise LockedTestEvaluationError(
+                f"causal receipt differs from prediction source {prediction_name}"
+            )
+    raw_by_episode: dict[str, dict[str, str]] = {}
+    predicted_state_ids: set[tuple[str, int]] = set()
+    records = prediction_payload.get("records")
+    if not isinstance(records, list):
+        raise LockedTestEvaluationError("prediction records are absent during causal binding")
+    for index, raw_record in enumerate(records):
+        record = _mapping(raw_record, f"predictions.records[{index}]")
+        hashes = _mapping(record.get("source_hashes"), "prediction source_hashes")
+        episode_id = record.get("episode_id")
+        if not isinstance(episode_id, str) or not episode_id:
+            raise LockedTestEvaluationError("prediction record episode ID is invalid")
+        identity = {
+            "episode_id": episode_id,
+            "raw_metadata_sha256": hashes.get("raw_metadata_sha256"),
+            "raw_trajectory_sha256": hashes.get("raw_trajectory_sha256"),
+        }
+        if not all(_is_sha256(identity[name]) for name in (
+            "raw_metadata_sha256", "raw_trajectory_sha256"
+        )):
+            raise LockedTestEvaluationError("prediction raw source hash is invalid")
+        previous = raw_by_episode.setdefault(episode_id, identity)
+        if previous != identity:
+            raise LockedTestEvaluationError("prediction raw source hashes drift within episode")
+        predicted_state_ids.add(
+            (episode_id, _integer(record.get("control_step"), "prediction control step"))
+        )
+    raw_inventory = [raw_by_episode[episode_id] for episode_id in sorted(raw_by_episode)]
+    if source["raw_inventory_sha256"] != _sha256(_canonical(raw_inventory)):
+        raise LockedTestEvaluationError("causal raw inventory is not prediction-evidence-derived")
+
+    pairs = payload.get("pairs")
+    evidence_hashes = payload.get("evidence_hashes")
+    if not isinstance(pairs, list) or len(pairs) != 60:
+        raise LockedTestEvaluationError("causal receipt must contain exactly 60 pair rows")
+    if not isinstance(evidence_hashes, list) or len(evidence_hashes) != 60:
+        raise LockedTestEvaluationError("causal receipt must contain 60 evidence hashes")
+    source_sha = _sha256(_canonical(source))
+    manifest_by_episode = {episode.episode_id: episode for episode in manifest.episodes}
+    valid_rows: list[dict[str, Any]] = []
+    all_control_effects: list[list[float]] = []
+    for index, raw_pair in enumerate(pairs):
+        pair = _exact_keys(
+            raw_pair,
+            {
+                "pair_index", "seed", "condition_index", "base_init_state_id",
+                "valid", "evidence_sha256", "evidence_path",
+            },
+            f"causal.pairs[{index}]",
+        )
+        if pair["pair_index"] != index or pair["seed"] != PAIRING_SEEDS[index // 20]:
+            raise LockedTestEvaluationError("causal pair indices/seeds are not frozen order")
+        cell = _integer(pair["condition_index"], "pair.condition_index")
+        _integer(pair["base_init_state_id"], "pair.base_init_state_id")
+        if cell >= 8 or type(pair["valid"]) is not bool:
+            raise LockedTestEvaluationError("causal pair metadata is invalid")
+        evidence_sha = pair["evidence_sha256"]
+        if not _is_sha256(evidence_sha) or evidence_hashes[index] != evidence_sha:
+            raise LockedTestEvaluationError("causal pair/evidence hash inventory differs")
+        evidence = _relative_evidence(
+            receipt_path, pair["evidence_path"], evidence_sha, f"causal pair {index}"
+        )
+        _exact_keys(
+            evidence,
+            {
+                "schema_version", "kind", "source_sha256", "pair",
+                "selected_patch", "off_manifold", "matched_control", "random_controls",
+            },
+            f"causal evidence {index}",
+        )
+        if (
+            evidence.get("schema_version") != 1
+            or evidence.get("kind") != "locked_test_causal_pair_evidence"
+            or evidence.get("source_sha256") != source_sha
+        ):
+            raise LockedTestEvaluationError("causal pair evidence binding differs")
+        evidence_pair_raw = _mapping(evidence["pair"], f"causal evidence {index}.pair")
+        pair_valid = evidence_pair_raw.get("valid")
+        expected_pair_keys = {
+            "pair_index", "seed", "condition_index", "base_init_state_id",
+            "recipient_id", "donor_id", "orientation_difference_degrees", "valid",
+        } | ({"invalid_reason"} if pair_valid is False else set())
+        evidence_pair = _exact_keys(
+            evidence_pair_raw, expected_pair_keys, f"causal evidence {index}.pair"
+        )
+        if any(evidence_pair.get(name) != pair.get(name) for name in (
+            "pair_index", "seed", "condition_index", "base_init_state_id"
+        )) or evidence_pair.get("valid") is not pair["valid"]:
+            raise LockedTestEvaluationError("causal evidence pair identity differs")
+        if not isinstance(evidence_pair["recipient_id"], str) or not evidence_pair["recipient_id"]:
+            raise LockedTestEvaluationError("causal evidence recipient ID is absent")
+        candidate_roles = ["recipient_id"]
+        invalid_reason = evidence_pair.get("invalid_reason")
+        if pair["valid"] or invalid_reason == "no_eligible_matched_donor":
+            if not isinstance(evidence_pair["donor_id"], str) or not evidence_pair["donor_id"]:
+                raise LockedTestEvaluationError("causal evidence donor ID is absent")
+            candidate_roles.append("donor_id")
+        elif invalid_reason == "no_eligible_confirmatory_donor":
+            if evidence_pair["donor_id"] is not None:
+                raise LockedTestEvaluationError(
+                    "unmatched confirmatory slot must use donor_id=null"
+                )
+        elif not pair["valid"]:
+            raise LockedTestEvaluationError("invalid causal pair reason is not frozen")
+        for candidate_role in candidate_roles:
+            candidate_id = evidence_pair[candidate_role]
+            episode_id, separator, step_text = candidate_id.rpartition("@")
+            try:
+                candidate_step = int(step_text)
+            except ValueError as exc:
+                raise LockedTestEvaluationError("causal candidate ID has invalid step") from exc
+            if separator != "@" or (episode_id, candidate_step) not in predicted_state_ids:
+                raise LockedTestEvaluationError(
+                    "causal candidate is not an exact frozen prediction state"
+                )
+        recipient_episode = evidence_pair["recipient_id"].rpartition("@")[0]
+        specification = manifest_by_episode.get(recipient_episode)
+        if (
+            specification is None
+            or specification.base_init_state_id != pair["base_init_state_id"]
+            or specification.condition_index != pair["condition_index"]
+        ):
+            raise LockedTestEvaluationError(
+                "causal pair condition/base-init identity differs from manifest"
+            )
+        if invalid_reason == "no_eligible_confirmatory_donor":
+            if evidence_pair["orientation_difference_degrees"] is not None:
+                raise LockedTestEvaluationError(
+                    "unmatched confirmatory slot must use orientation_difference_degrees=null"
+                )
+        else:
+            pair_angle = _finite(
+                evidence_pair["orientation_difference_degrees"],
+                "confirmatory orientation difference", lower=0,
+            )
+            if pair_angle < 30.0 or pair_angle > 90.0:
+                raise LockedTestEvaluationError("confirmatory pair is outside [30, 90] degrees")
+        if not pair["valid"]:
+            if (
+                any(evidence[name] is not None for name in (
+                    "selected_patch", "off_manifold", "matched_control"
+                ))
+                or evidence["random_controls"] != []
+            ):
+                raise LockedTestEvaluationError("invalid causal pair contains scientific results")
+            continue
+        selected = _exact_keys(
+            evidence["selected_patch"],
+            {"alpha", "sign_correct", "donor_aligned_target_effect", "off_target_ratio", "off_target_ratio_status"},
+            f"causal evidence {index}.selected_patch",
+        )
+        if _finite(selected["alpha"], "selected alpha") != 0.25 or type(selected["sign_correct"]) is not bool:
+            raise LockedTestEvaluationError("causal selected patch differs from frozen alpha")
+        effect = _finite(selected["donor_aligned_target_effect"], "selected effect")
+        ratio = _validated_ratio(
+            selected["off_target_ratio"], selected["off_target_ratio_status"],
+            "selected off-target ratio",
+        )
+        off = _exact_keys(
+            evidence["off_manifold"],
+            {"patched_five_nn_distance", "natural_95th_percentile", "off_manifold"},
+            f"causal evidence {index}.off_manifold",
+        )
+        distance = _finite(off["patched_five_nn_distance"], "patched 5NN", lower=0)
+        threshold = _finite(off["natural_95th_percentile"], "natural 95th", lower=0)
+        if type(off["off_manifold"]) is not bool or off["off_manifold"] != (distance > threshold):
+            raise LockedTestEvaluationError("off-manifold flag is not derived from 5-NN evidence")
+        matched = _exact_keys(
+            evidence["matched_control"],
+            {"donor_id", "orientation_difference_degrees", "sign_correct", "donor_aligned_target_effect"},
+            f"causal evidence {index}.matched_control",
+        )
+        angle = _finite(matched["orientation_difference_degrees"], "matched angle", lower=0)
+        if (
+            not isinstance(matched["donor_id"], str) or not matched["donor_id"]
+            or not angle < 5.0 or type(matched["sign_correct"]) is not bool
+        ):
+            raise LockedTestEvaluationError("matched control violates the strict <5 degree rule")
+        matched_episode, separator, matched_step_text = matched["donor_id"].rpartition("@")
+        try:
+            matched_step = int(matched_step_text)
+        except ValueError as exc:
+            raise LockedTestEvaluationError("matched-control candidate ID has invalid step") from exc
+        if separator != "@" or (matched_episode, matched_step) not in predicted_state_ids:
+            raise LockedTestEvaluationError(
+                "matched-control donor is not an exact frozen prediction state"
+            )
+        _finite(matched["donor_aligned_target_effect"], "matched effect")
+        controls = evidence["random_controls"]
+        if not isinstance(controls, list) or len(controls) != 1000:
+            raise LockedTestEvaluationError("each valid pair needs 1000 random controls")
+        control_effects: list[float] = []
+        for control_index, raw_control in enumerate(controls):
+            control = _exact_keys(
+                raw_control, {"control_index", "donor_aligned_target_effect"},
+                f"causal evidence {index}.random_controls[{control_index}]",
+            )
+            if control["control_index"] != control_index:
+                raise LockedTestEvaluationError("random control indices must be exactly 0..999 per pair")
+            control_effects.append(
+                _finite(control["donor_aligned_target_effect"], "random-control effect")
+            )
+        all_control_effects.append(control_effects)
+        valid_rows.append(
+            {
+                "sign": selected["sign_correct"], "effect": effect, "ratio": ratio,
+                "off": off["off_manifold"], "matched": matched["sign_correct"],
+                "base_init": pair["base_init_state_id"], "seed": pair["seed"],
+            }
+        )
+
+    summary = _exact_keys(
+        payload.get("selected_layer_summary"),
+        {
+            "status", "attempted_pairs", "valid_pairs", "sign_correct_count",
+            "sign_correct_rate", "sign_interval", "median_donor_aligned_target_effect",
+            "median_off_target_ratio", "median_off_target_ratio_status",
+            "off_manifold_rate", "matched_control_sign_rate",
+            "random_control_95th_percentile", "random_control_passes",
+            "specificity_passes", "sign_passes", "positive_seed_count",
+            "seed_stability_passes",
+        },
+        "causal.selected_layer_summary",
+    )
+    valid = len(valid_rows)
+    expected_status = "inconclusive_insufficient_valid_pairs" if valid < 30 else "complete"
+    if summary["status"] != expected_status or summary["attempted_pairs"] != 60 or summary["valid_pairs"] != valid:
+        raise LockedTestEvaluationError("selected-layer status/counts are not evidence-derived")
+    signs = [bool(row["sign"]) for row in valid_rows]
+    sign_count = sum(signs)
+    sign_rate = sign_count / valid if valid else None
+    if summary["sign_correct_count"] != sign_count or (valid and not math.isclose(_rate(summary["sign_correct_rate"], "summary sign rate"), sign_rate, abs_tol=1e-12)):
+        raise LockedTestEvaluationError("selected-layer sign summary differs from evidence")
+    if not valid and summary["sign_correct_rate"] is not None:
+        raise LockedTestEvaluationError("empty selected-layer summary contains a sign rate")
     if valid:
-        sign_count = _integer(result.get("sign_correct_count"), "sign_correct_count")
-        sign_rate = _rate(result.get("sign_correct_rate"), "sign_correct_rate")
-        if sign_count > valid or not math.isclose(sign_rate, sign_count / valid, abs_tol=1e-12):
-            raise LockedTestEvaluationError("causal sign rate disagrees with pair counts")
-        interval = _mapping(result.get("sign_interval"), "causal.sign_interval")
-        if _finite(interval.get("confidence"), "sign_interval.confidence") != 0.90:
-            raise LockedTestEvaluationError("causal sign interval is not 90%")
-        lower = _finite(interval.get("lower"), "sign_interval.lower")
-        upper = _finite(interval.get("upper"), "sign_interval.upper")
-        if not 0 <= lower <= upper <= 1:
-            raise LockedTestEvaluationError("causal sign interval is malformed")
-        ratio = _finite(result.get("median_off_target_ratio"), "median_off_target_ratio", lower=0)
-        if type(result.get("random_control_passes")) is not bool:
-            raise LockedTestEvaluationError("causal random-control result must be boolean")
-        _rate(result.get("off_manifold_rate"), "off_manifold_rate")
-        _rate(result.get("matched_donor_control_rate"), "matched_donor_control_rate")
-        if type(result.get("specificity_passes")) is not bool or result["specificity_passes"] != (ratio <= 0.25):
-            raise LockedTestEvaluationError("causal specificity result is inconsistent")
-    per_seed = payload.get("per_seed")
-    if not isinstance(per_seed, list) or [item.get("seed") for item in per_seed if isinstance(item, Mapping)] != list(PAIRING_SEEDS):
-        raise LockedTestEvaluationError("causal receipt lacks ordered three-seed results")
+        cluster_ids = [row["base_init"] for row in valid_rows]
+        expected_interval = None
+        if len(set(cluster_ids)) >= 2:
+            interval = _exact_keys(
+                summary["sign_interval"],
+                {"estimate", "lower", "upper", "confidence", "replicates", "clusters", "seed"},
+                "causal.selected_layer_summary.sign_interval",
+            )
+            expected_interval = cluster_bootstrap_rate_interval(
+                signs, cluster_ids, seed=BOOTSTRAP_SEED,
+                replicates=BOOTSTRAP_REPLICATES, confidence=BOOTSTRAP_CONFIDENCE,
+            )
+            if any(not math.isclose(_finite(interval[name], f"sign_interval.{name}"), float(getattr(expected_interval, name)), abs_tol=1e-12) for name in ("estimate", "lower", "upper", "confidence")) or any(interval[name] != getattr(expected_interval, name) for name in ("replicates", "clusters", "seed")):
+                raise LockedTestEvaluationError("selected-layer sign interval is not evidence-derived")
+        elif summary["sign_interval"] is not None:
+            raise LockedTestEvaluationError("single-cluster sign interval must be unavailable")
+        expected_effect = float(np.median([row["effect"] for row in valid_rows]))
+        if not math.isclose(_finite(summary["median_donor_aligned_target_effect"], "median effect"), expected_effect, abs_tol=1e-12):
+            raise LockedTestEvaluationError("selected-layer median effect differs from evidence")
+        expected_ratio = float(np.median([row["ratio"] for row in valid_rows]))
+        observed_ratio = _validated_ratio(summary["median_off_target_ratio"], summary["median_off_target_ratio_status"], "summary median ratio")
+        if observed_ratio != expected_ratio and not math.isclose(observed_ratio, expected_ratio, abs_tol=1e-12):
+            raise LockedTestEvaluationError("selected-layer specificity differs from evidence")
+        pooled_controls = np.median(np.asarray(all_control_effects, dtype=np.float64), axis=0)
+        control_95 = float(np.percentile(pooled_controls, 95.0))
+        observed_median = expected_effect
+        expected_random_pass = observed_median > control_95
+        expected_off_rate = sum(row["off"] for row in valid_rows) / valid
+        expected_matched_rate = sum(row["matched"] for row in valid_rows) / valid
+        positive_seeds = sum(
+            bool(
+                np.median(
+                    [row["effect"] for row in valid_rows if row["seed"] == seed]
+                ) > 0.0
+            )
+            for seed in PAIRING_SEEDS
+            if any(row["seed"] == seed for row in valid_rows)
+        )
+        checks = {
+            "off_manifold_rate": expected_off_rate,
+            "matched_control_sign_rate": expected_matched_rate,
+            "random_control_95th_percentile": control_95,
+        }
+        for name, expected_value in checks.items():
+            if not math.isclose(_finite(summary[name], f"summary.{name}"), expected_value, abs_tol=1e-12):
+                raise LockedTestEvaluationError(f"{name} differs from pair evidence")
+        expected_specificity = expected_ratio <= 0.25
+        expected_sign_pass = bool(
+            expected_interval is not None
+            and expected_interval.estimate > 0.5
+            and expected_interval.lower > 0.5
+        )
+        expected_seed_pass = bool(positive_seeds >= 2)
+        boolean_checks = {
+            "random_control_passes": expected_random_pass,
+            "specificity_passes": expected_specificity,
+            "sign_passes": expected_sign_pass,
+            "seed_stability_passes": expected_seed_pass,
+        }
+        for name, expected_value in boolean_checks.items():
+            if summary[name] is not expected_value:
+                raise LockedTestEvaluationError(f"{name} differs from pair evidence")
+        if summary["positive_seed_count"] != positive_seeds:
+            raise LockedTestEvaluationError("positive seed count differs from pair evidence")
+    else:
+        empty_expected = {
+            "sign_interval": None,
+            "median_donor_aligned_target_effect": None,
+            "median_off_target_ratio": None,
+            "median_off_target_ratio_status": "unavailable_no_valid_pairs",
+            "off_manifold_rate": None,
+            "matched_control_sign_rate": None,
+            "random_control_95th_percentile": None,
+            "random_control_passes": False,
+            "specificity_passes": False,
+            "sign_passes": False,
+            "positive_seed_count": 0,
+            "seed_stability_passes": False,
+        }
+        if any(summary[name] != expected_value for name, expected_value in empty_expected.items()):
+            raise LockedTestEvaluationError("empty selected-layer summary contains invented results")
+    supporting = _exact_keys(
+        payload.get("supporting_layers"),
+        {"status", "reason", "multi_layer_support_available", "layer_support_passes"},
+        "causal.supporting_layers",
+    )
+    if supporting != {
+        "status": "unavailable", "reason": SUPPORTING_LAYER_REASON,
+        "multi_layer_support_available": False, "layer_support_passes": False,
+    }:
+        raise LockedTestEvaluationError("supporting-layer limitation marker differs")
+    confirmatory = _exact_keys(
+        payload.get("confirmatory"), {"status", "succeeds", "reason"},
+        "causal.confirmatory",
+    )
+    if confirmatory != {
+        "status": "unsupported", "succeeds": False,
+        "reason": SUPPORTING_LAYER_REASON,
+    }:
+        raise LockedTestEvaluationError(
+            "positive confirmatory claim must be deterministically unsupported/false"
+        )
 
 
 def _validate_sensitivity_receipt(
-    payload: Mapping[str, Any], manifest_sha: str, prediction_sha: str, causal_sha: str
+    payload: Mapping[str, Any],
+    receipt_path: Path,
+    manifest_sha: str,
+    prediction_sha: str,
+    causal_sha: str,
 ) -> None:
     if payload.get("schema_version") != 1 or payload.get("kind") != "locked_test_sensitivity_receipt":
         raise LockedTestEvaluationError("sensitivity receipt has the wrong schema or kind")
-    source = _mapping(payload.get("source"), "sensitivity.source")
+    _exact_keys(
+        payload,
+        {
+            "schema_version", "kind", "source", "evidence_hashes",
+            "dose_evidence", "dose_by_difficulty", "rollout_diagnostics",
+            "broken_successes",
+        },
+        "sensitivity",
+    )
+    source = _exact_keys(
+        payload.get("source"),
+        {
+            "manifest_sha256", "prediction_receipt_sha256",
+            "causal_receipt_sha256", "alphas", "pairing_seeds",
+            "patch_rule",
+        },
+        "sensitivity.source",
+    )
     expected = {
         "manifest_sha256": manifest_sha,
         "prediction_receipt_sha256": prediction_sha,
@@ -489,37 +910,172 @@ def _validate_sensitivity_receipt(
     }
     if any(source.get(key) != value for key, value in expected.items()):
         raise LockedTestEvaluationError("sensitivity receipt is bound to different inputs")
-    diagnostics = _mapping(payload.get("rollout_diagnostics"), "rollout_diagnostics")
-    if _integer(diagnostics.get("episode_count"), "diagnostics.episode_count") != 160:
-        raise LockedTestEvaluationError("rollout diagnostics do not cover 160 episodes")
-    by_cell = diagnostics.get("by_cell")
-    if not isinstance(by_cell, list) or [item.get("condition_index") for item in by_cell if isinstance(item, Mapping)] != list(range(8)):
-        raise LockedTestEvaluationError("rollout diagnostics must cover cells 0 through 7")
-    _rate(
-        diagnostics.get("nearest_object_identity_accuracy"),
-        "rollout_diagnostics.nearest_object_identity_accuracy",
+    if source.get("alphas") != [0.5, 1.0] or source.get("pairing_seeds") != list(PAIRING_SEEDS):
+        raise LockedTestEvaluationError("sensitivity source does not use the frozen dose/seeds")
+    if source.get("patch_rule") != "same_selected_layer_pair_plan_no_refit":
+        raise LockedTestEvaluationError("sensitivity receipt used another patching rule")
+    diagnostics = _exact_keys(
+        payload.get("rollout_diagnostics"), {"status", "reason"},
+        "rollout_diagnostics",
     )
-    for name in ("mean_identity_error", "mean_identity_distance"):
-        _finite(diagnostics.get(name), f"rollout_diagnostics.{name}", lower=0)
+    if diagnostics != {
+        "status": POSITION_DIAGNOSTIC_STATUS,
+        "reason": POSITION_DIAGNOSTIC_REASON,
+    }:
+        raise LockedTestEvaluationError(
+            "9a must use the exact pre-access missing-position-trace marker"
+        )
+    broken = _exact_keys(
+        payload.get("broken_successes"), {"status", "reason"}, "broken_successes"
+    )
+    if broken != {"status": "unavailable", "reason": BROKEN_SUCCESS_REASON}:
+        raise LockedTestEvaluationError("broken-success limitation marker differs")
+
+    dose_evidence = payload.get("dose_evidence")
+    evidence_hashes = payload.get("evidence_hashes")
+    if not isinstance(dose_evidence, list) or len(dose_evidence) != 60:
+        raise LockedTestEvaluationError("sensitivity must contain 60 dose-evidence rows")
+    if not isinstance(evidence_hashes, list) or len(evidence_hashes) != 60:
+        raise LockedTestEvaluationError("sensitivity evidence-hash inventory must contain 60 rows")
+    source_sha = _sha256(_canonical(source))
+    by_alpha_cell: dict[tuple[float, int], list[dict[str, Any]]] = {
+        (alpha, cell): [] for alpha in (0.5, 1.0) for cell in range(8)
+    }
+    attempted_indices_by_cell: dict[int, list[int]] = {cell: [] for cell in range(8)}
+    for index, raw_row in enumerate(dose_evidence):
+        row = _exact_keys(
+            raw_row, {"pair_index", "evidence_sha256", "evidence_path"},
+            f"dose_evidence[{index}]",
+        )
+        if row["pair_index"] != index:
+            raise LockedTestEvaluationError("dose-evidence pair indices are not 0..59")
+        digest = row["evidence_sha256"]
+        if not _is_sha256(digest) or evidence_hashes[index] != digest:
+            raise LockedTestEvaluationError("dose evidence hash inventory differs")
+        evidence = _relative_evidence(
+            receipt_path, row["evidence_path"], digest, f"dose pair {index}"
+        )
+        _exact_keys(
+            evidence,
+            {"schema_version", "kind", "source_sha256", "pair", "alphas"},
+            f"dose evidence {index}",
+        )
+        if (
+            evidence.get("schema_version") != 1
+            or evidence.get("kind") != "locked_test_sensitivity_pair_evidence"
+            or evidence.get("source_sha256") != source_sha
+        ):
+            raise LockedTestEvaluationError("dose evidence source binding differs")
+        pair_raw = _mapping(evidence["pair"], f"dose evidence {index}.pair")
+        valid = pair_raw.get("valid")
+        pair = _exact_keys(
+            pair_raw,
+            {
+                "pair_index", "seed", "condition_index", "base_init_state_id", "valid",
+            } | ({"invalid_reason"} if valid is False else set()),
+            f"dose evidence {index}.pair",
+        )
+        if (
+            pair["pair_index"] != index
+            or pair["seed"] != PAIRING_SEEDS[index // 20]
+            or type(valid) is not bool
+        ):
+            raise LockedTestEvaluationError("dose evidence pair binding differs")
+        cell = _integer(pair["condition_index"], "dose condition_index")
+        _integer(pair["base_init_state_id"], "dose base-init ID")
+        if cell >= 8:
+            raise LockedTestEvaluationError("dose condition index is outside 0..7")
+        attempted_indices_by_cell[cell].append(index)
+        if not valid:
+            if pair["invalid_reason"] not in {
+                "no_eligible_confirmatory_donor", "no_eligible_matched_donor"
+            }:
+                raise LockedTestEvaluationError("invalid dose pair reason is not frozen")
+            if evidence["alphas"] is not None:
+                raise LockedTestEvaluationError("invalid dose pair contains scientific results")
+            continue
+        alphas = evidence["alphas"]
+        if not isinstance(alphas, list) or len(alphas) != 2:
+            raise LockedTestEvaluationError("valid dose pair must contain alpha 0.5 and 1.0")
+        for alpha_index, raw_alpha in enumerate(alphas):
+            alpha_row = _exact_keys(
+                raw_alpha,
+                {
+                    "alpha", "sign_correct", "donor_aligned_target_effect",
+                    "off_target_ratio", "off_target_ratio_status",
+                },
+                f"dose evidence {index}.alphas[{alpha_index}]",
+            )
+            alpha = (0.5, 1.0)[alpha_index]
+            if _finite(alpha_row["alpha"], "dose alpha") != alpha or type(alpha_row["sign_correct"]) is not bool:
+                raise LockedTestEvaluationError("dose evidence alpha/sign differs")
+            effect = _finite(alpha_row["donor_aligned_target_effect"], "dose effect")
+            ratio = _validated_ratio(
+                alpha_row["off_target_ratio"], alpha_row["off_target_ratio_status"],
+                "dose off-target ratio",
+            )
+            by_alpha_cell[(alpha, cell)].append(
+                {"pair_index": index, "sign": alpha_row["sign_correct"], "effect": effect, "ratio": ratio}
+            )
     dose = payload.get("dose_by_difficulty")
     if not isinstance(dose, list):
         raise LockedTestEvaluationError("dose_by_difficulty must be an array")
     dose_grid = []
     for index, raw in enumerate(dose):
-        item = _mapping(raw, f"dose_by_difficulty[{index}]")
+        item = _exact_keys(
+            raw,
+            {
+                "alpha", "condition_index", "pair_indices", "valid_pairs",
+                "sign_correct_count", "sign_correct_rate", "median_donor_aligned_target_effect",
+                "median_off_target_ratio", "median_off_target_ratio_status",
+                "specificity_passes",
+            },
+            f"dose_by_difficulty[{index}]",
+        )
         alpha = _finite(item.get("alpha"), "dose alpha")
         cell = _integer(item.get("condition_index"), "dose condition_index")
-        _rate(item.get("sign_correct_rate"), "dose sign_correct_rate")
-        _finite(item.get("median_off_target_ratio"), "dose median_off_target_ratio", lower=0)
+        evidence_rows = by_alpha_cell.get((alpha, cell))
+        indices = attempted_indices_by_cell[cell]
+        if not evidence_rows:
+            expected_empty = {
+                "alpha": alpha,
+                "condition_index": cell,
+                "pair_indices": indices,
+                "valid_pairs": 0,
+                "sign_correct_count": 0,
+                "sign_correct_rate": None,
+                "median_donor_aligned_target_effect": None,
+                "median_off_target_ratio": None,
+                "median_off_target_ratio_status": "unavailable_no_valid_pairs",
+                "specificity_passes": False,
+            }
+            if dict(item) != expected_empty:
+                raise LockedTestEvaluationError(
+                    "empty dose cell must use the exact evidence-derived unavailable form"
+                )
+            dose_grid.append((alpha, cell))
+            continue
+        sign_count = sum(row["sign"] for row in evidence_rows)
+        sign_rate = sign_count / len(evidence_rows)
+        median_effect = float(np.median([row["effect"] for row in evidence_rows]))
+        median_ratio = float(np.median([row["ratio"] for row in evidence_rows]))
+        observed_ratio = _validated_ratio(
+            item["median_off_target_ratio"], item["median_off_target_ratio_status"],
+            "dose aggregate ratio",
+        )
+        if (
+            item["pair_indices"] != indices
+            or item["valid_pairs"] != len(evidence_rows)
+            or item["sign_correct_count"] != sign_count
+            or not math.isclose(_rate(item["sign_correct_rate"], "dose sign rate"), sign_rate, abs_tol=1e-12)
+            or not math.isclose(_finite(item["median_donor_aligned_target_effect"], "dose median effect"), median_effect, abs_tol=1e-12)
+            or (observed_ratio != median_ratio and not math.isclose(observed_ratio, median_ratio, abs_tol=1e-12))
+            or item["specificity_passes"] is not (median_ratio <= 0.25)
+        ):
+            raise LockedTestEvaluationError("dose aggregate differs from pair evidence")
         dose_grid.append((alpha, cell))
     if dose_grid != [(alpha, cell) for alpha in (0.5, 1.0) for cell in range(8)]:
         raise LockedTestEvaluationError("dose sensitivity is not the ordered 2 x 8 grid")
-    ledger = _mapping(payload.get("broken_successes"), "broken_successes")
-    if _integer(ledger.get("total_pairs"), "broken_successes.total_pairs") != 60:
-        raise LockedTestEvaluationError("broken-success ledger is not bound to all 60 pairs")
-    records = ledger.get("records")
-    if not isinstance(records, list) or len(records) != 60:
-        raise LockedTestEvaluationError("broken-success ledger must contain exactly 60 rows")
 
 
 def _validate_cost_receipt(
@@ -982,7 +1538,15 @@ def build_report(
                 "m2_vs_m0_relative_lift": m2_m0.relative_lift,
                 "m2_vs_m1_primary_succeeds": primary.primary_claim_succeeds,
                 "causal_status": causal_payload["confirmatory"]["status"],
-                "causal_specificity_passes": causal_payload["confirmatory"].get("specificity_passes"),
+                "selected_layer_specificity_passes": causal_payload[
+                    "selected_layer_summary"
+                ].get("specificity_passes"),
+                "multi_layer_support_available": causal_payload[
+                    "supporting_layers"
+                ]["multi_layer_support_available"],
+                "positive_confirmatory_causal_claim_succeeds": causal_payload[
+                    "confirmatory"
+                ]["succeeds"],
             },
         },
     ]
@@ -1038,9 +1602,15 @@ def evaluate(
     )
     calibration_freeze = _load_addressed_json(calibration_freeze_path, calibration_freeze_sha256)
     reality_gate = _load_addressed_json(reality_gate_lock_path, reality_gate_lock_sha256)
-    causal_payload = _load_addressed_json(causal_receipt_path, causal_receipt_sha256)
-    sensitivity_payload = _load_addressed_json(sensitivity_receipt_path, sensitivity_receipt_sha256)
-    cost_payload = _load_addressed_json(cost_receipt_path, cost_receipt_sha256)
+    causal_payload = _load_addressed_json(
+        causal_receipt_path, causal_receipt_sha256, directory_addressed=True
+    )
+    sensitivity_payload = _load_addressed_json(
+        sensitivity_receipt_path, sensitivity_receipt_sha256, directory_addressed=True
+    )
+    cost_payload = _load_addressed_json(
+        cost_receipt_path, cost_receipt_sha256, directory_addressed=True
+    )
     manifest = _manifest_from_payload(manifest_payload)
     if manifest.sha256 != manifest_sha256:
         raise LockedTestEvaluationError("manifest logical digest differs from its file digest")
@@ -1052,9 +1622,13 @@ def evaluate(
         freeze_sha256=calibration_freeze_sha256,
         reality_gate_sha256=reality_gate_lock_sha256,
     )
-    _validate_causal_receipt(causal_payload, manifest_sha256, predictions_sha256)
+    _validate_causal_receipt(
+        causal_payload, causal_receipt_path, manifest, manifest_sha256,
+        predictions_sha256, prediction_payload,
+    )
     _validate_sensitivity_receipt(
-        sensitivity_payload, manifest_sha256, predictions_sha256, causal_receipt_sha256
+        sensitivity_payload, sensitivity_receipt_path, manifest_sha256,
+        predictions_sha256, causal_receipt_sha256,
     )
     _validate_cost_receipt(cost_payload, manifest_sha256, predictions_sha256)
     bounds = _failure_bounds(reality_gate, manifest.task)

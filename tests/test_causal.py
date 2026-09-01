@@ -12,6 +12,7 @@ from mech_int_vla.causal import (
     compare_random_controls,
     evaluate_confirmatory_causal_claim,
     five_nearest_neighbor_distance,
+    iter_norm_matched_random_shifts,
     norm_matched_random_subspaces,
     off_manifold_flag,
     orthogonal_probe_projector,
@@ -104,6 +105,30 @@ def test_random_subspaces_are_seeded_rank_two_and_shift_norm_matched() -> None:
         norm_matched_random_subspaces(
             coefficient, difference, seed=19, alpha=0.75, count=1
         )
+
+
+def test_streaming_random_shifts_equal_dense_projector_controls() -> None:
+    coefficient = np.array([[1.0, 0, 0, 0], [0, 1.0, 0, 0]])
+    difference = np.array([3.0, 4.0, 5.0, 6.0])
+    dense = norm_matched_random_subspaces(
+        coefficient, difference, seed=23, alpha=0.25, count=5
+    )
+    streaming = tuple(
+        iter_norm_matched_random_shifts(
+            coefficient, difference, seed=23, alpha=0.25, count=5
+        )
+    )
+    for expected, observed in zip(dense, streaming, strict=True):
+        np.testing.assert_allclose(observed.matched_shift, expected.matched_shift)
+        np.testing.assert_allclose(
+            observed.orthonormal_basis.T @ observed.orthonormal_basis,
+            np.eye(2),
+            atol=1e-12,
+        )
+        assert observed.raw_projected_norm == pytest.approx(
+            expected.raw_projected_norm
+        )
+        assert not observed.orthonormal_basis.flags.writeable
 
 
 def test_candidate_defensively_copies_and_canonicalizes_predicates() -> None:

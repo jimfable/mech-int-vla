@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Evidence producer and fail-closed capability gate for Locked Test post-scoring.
+"""Fail-closed capability gate and accounting producer for post-scoring.
 
-The cost subcommand produces the one post-scoring input that can be derived
-from operator-supplied accounting evidence.  The preflight subcommand validates
-all scientific inputs and refuses to start GPU intervention work when the
-frozen artifacts cannot define a required analysis.  It never substitutes an
-orientation probe for a position/identity probe and never treats an unfrozen
-supporting layer as confirmatory evidence.
+The GPU causal producer lives in :mod:`ops.locked_test_causal`.  This companion
+validates its immutable inputs before it can run and produces the one receipt
+which legitimately comes from operator evidence: stage accounting.  Two
+prospectively approved limitations are represented explicitly rather than by
+proxy numbers: the position-trace diagnostic is unavailable and a missing
+supporting-layer probe makes the positive multi-layer claim unsupported.  The
+selected-layer experiment remains mandatory in both cases.
 """
 
 from __future__ import annotations
@@ -37,6 +38,13 @@ from mech_int_vla.scoring import load_scoring_sidecar
 SCHEMA_VERSION = 1
 PAIRING_SEEDS = (260_803, 260_804, 260_805)
 STAGE_ORDER = ("collection", "scoring", "evaluation", "causal_patching", "sensitivity")
+POSITION_DIAGNOSTIC_STATUS = "unavailable_preaccess_missing_position_trace"
+POSITION_DIAGNOSTIC_REASON = "frozen_position_decoder_and_all_object_trace_absent"
+SUPPORTING_LAYER_STATUS = "unavailable"
+SUPPORTING_LAYER_REASON = "frozen_supporting_layer_coefficients_absent"
+CALIBRATION_ACTIVATION_REFERENCE_SHA256 = (
+    "cb210e82571cda4ebf3b3a66499357eeb26bfee1ac5c5ea6d5560da5f5bc684c"
+)
 
 
 class PostscoreError(RuntimeError):
@@ -132,6 +140,61 @@ def _load_evaluator_module() -> Any:
     return module
 
 
+def _load_activation_reference_module() -> Any:
+    path = REPO_ROOT / "ops" / "build_calibration_activation_reference.py"
+    spec = importlib.util.spec_from_file_location(
+        "calibration_activation_reference_for_postscore", path
+    )
+    if spec is None or spec.loader is None:
+        raise PostscoreError("could not load the Calibration activation-reference contract")
+    module = importlib.util.module_from_spec(spec)
+    # Dataclass construction consults sys.modules while the file executes.
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
+    return module
+
+
+def _load_activation_reference(
+    path: Path,
+    expected_sha256: str,
+    *,
+    bound_probe_sha256: str,
+    calibration_reference_sha256: str,
+) -> Any:
+    """Load and cross-bind the full pre-access natural activation matrix."""
+
+    if not _is_sha256(expected_sha256):
+        raise PostscoreError("activation-reference digest must be a lowercase SHA-256")
+    if expected_sha256 != CALIBRATION_ACTIVATION_REFERENCE_SHA256:
+        raise PostscoreError("activation reference is not the final frozen cb210e artifact")
+    module = _load_activation_reference_module()
+    try:
+        loaded = module.load_activation_reference(
+            path.resolve(), expected_sha256=expected_sha256
+        )
+    except Exception as exc:
+        raise PostscoreError(f"invalid Calibration activation reference: {exc}") from exc
+    metadata = _mapping(loaded.metadata, "activation_reference.metadata")
+    counts = _mapping(metadata.get("counts"), "activation_reference.counts")
+    if counts != {"episodes": 160, "rows": 9455, "width": 720}:
+        raise PostscoreError(
+            "Calibration activation reference must contain exactly 160 episodes and "
+            "a 9455 x 720 natural matrix"
+        )
+    source = _mapping(metadata.get("source"), "activation_reference.source")
+    if source.get("bound_probe_sha256") != bound_probe_sha256:
+        raise PostscoreError("activation reference is bound to another BoundProbe")
+    if source.get("feature_reference_sha256") != calibration_reference_sha256:
+        raise PostscoreError("activation reference is bound to another feature reference")
+    selection = _mapping(metadata.get("selection"), "activation_reference.selection")
+    if selection.get("labels_used") is not False or selection.get("refit_performed") is not False:
+        raise PostscoreError("activation reference used labels or refitting")
+    return loaded
+
+
 def _publish(output_root: Path, filename: str, payload: Mapping[str, Any]) -> tuple[Path, str]:
     canonical = _canonical(payload)
     digest = _sha256(canonical)
@@ -211,69 +274,87 @@ def build_cost_receipt(
     }
 
 
-def capability_blockers(
+def capability_assessment(
     bound_probe_payload: Mapping[str, Any],
-    calibration_reference_metadata: Mapping[str, Any],
-) -> list[dict[str, str]]:
-    """Return protocol blockers visible from immutable Calibration evidence.
+    *,
+    activation_reference_loaded: bool,
+) -> dict[str, list[dict[str, Any]]]:
+    """Classify frozen capabilities without converting limitations to proxies."""
 
-    A blocker is a scientific-definition failure, not a missing implementation.
-    The messages name the exact extra frozen evidence a future amendment would
-    need.  Returning these instead of proxy metrics is the central fail-closed
-    guarantee of this producer.
-    """
-
-    blockers: list[dict[str, str]] = []
+    limitations: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
     numerical = _mapping(bound_probe_payload.get("numerical_probe"), "bound.numerical_probe")
     metadata = _mapping(numerical.get("metadata"), "bound.numerical_probe.metadata")
     target = metadata.get("target")
     selection = _mapping(metadata.get("selection"), "bound probe selection")
     selected_candidate = selection.get("candidate")
     if target != "relative_primary_object_position_xyz":
-        blockers.append(
+        limitations.append(
             {
-                "code": "rollout_diagnostic_probe_target_incompatible",
+                "code": POSITION_DIAGNOSTIC_STATUS,
+                "reason": POSITION_DIAGNOSTIC_REASON,
+                "authorized": True,
                 "message": (
-                    "Amendment 9a requires decoded object position to define nearest-object "
-                    "identity and position-error/remaining-distance. The frozen probe target is "
-                    f"{target!r}, not relative_primary_object_position_xyz; an orientation/error "
-                    "proxy is forbidden. A pre-Locked-Test Calibration position probe and all-object "
-                    "pose trace would have to be frozen explicitly."
+                    "The frozen probe target is "
+                    f"{target!r}; there is no pre-access position decoder and all-object "
+                    "position trace. Section 9a must emit its exact unavailable marker and "
+                    "must not contain angular, coverage, or other proxy values."
                 ),
             }
         )
     candidate_results = metadata.get("candidate_results")
     has_supporting_parameters = bool(metadata.get("supporting_layer_parameters"))
     if not has_supporting_parameters:
-        blockers.append(
+        limitations.append(
             {
-                "code": "supporting_layer_probe_parameters_missing",
+                "code": "multi_layer_support_unavailable",
+                "reason": SUPPORTING_LAYER_REASON,
+                "authorized": True,
+                "multi_layer_support_available": False,
                 "message": (
-                    "PREREG section 10 requires effect-direction support at two of three "
-                    "activation locations. The bound artifact contains executable coefficients "
-                    f"only for selected candidate {selected_candidate!r}; candidate_results "
-                    f"({len(candidate_results) if isinstance(candidate_results, list) else 0} rows) "
-                    "contain CV metrics but no frozen non-selected-layer coefficients. Refitting "
-                    "after Locked Test access is prohibited."
+                    "Executable coefficients exist only for selected candidate "
+                    f"{selected_candidate!r}; the "
+                    f"{len(candidate_results) if isinstance(candidate_results, list) else 0} "
+                    "candidate-result rows contain selection metrics, not frozen coefficients. "
+                    "Selected-layer patching remains mandatory, but the positive confirmatory "
+                    "causal claim is deterministically unsupported/false and no refit is allowed."
                 ),
             }
         )
-    arrays = _mapping(calibration_reference_metadata.get("arrays"), "reference.arrays")
-    members = _mapping(arrays.get("members"), "reference.arrays.members")
-    if "selected_natural_activation" not in members:
+    if not activation_reference_loaded:
         blockers.append(
             {
                 "code": "calibration_natural_activation_reference_missing",
+                "authorized": False,
                 "message": (
-                    "The frozen feature reference contains coverage/probe-norm summaries but no "
-                    "selected natural Calibration activation matrix. The required activation-space "
-                    "5-NN off-manifold threshold therefore needs the hash-bound Calibration score "
-                    "sidecars named by the reference source hashes; the feature reference alone "
-                    "cannot produce it."
+                    "A hash-bound Calibration activation-reference directory with the full "
+                    "natural 9455 x 720 matrix and per-episode source hashes is mandatory for "
+                    "the 5-NN/off-manifold computation."
                 ),
             }
         )
-    return blockers
+    return {"limitations": limitations, "blockers": blockers}
+
+
+def capability_blockers(
+    bound_probe_payload: Mapping[str, Any],
+    calibration_reference_metadata: Mapping[str, Any] | None = None,
+    *,
+    activation_reference_loaded: bool | None = None,
+) -> list[dict[str, Any]]:
+    """Compatibility wrapper returning only hard blockers.
+
+    The old feature-reference ``arrays.members`` value is deliberately ignored:
+    it is not the newly frozen natural-activation reference.  Callers must pass
+    ``activation_reference_loaded=True`` only after the content-addressed
+    activation-reference loader has verified the directory.
+    """
+
+    del calibration_reference_metadata
+    return capability_assessment(
+        bound_probe_payload,
+        activation_reference_loaded=bool(activation_reference_loaded),
+    )["blockers"]
 
 
 def validate_scientific_inputs(
@@ -290,8 +371,12 @@ def validate_scientific_inputs(
     bound_probe_sha256: str,
     calibration_reference_path: Path,
     calibration_reference_sha256: str,
-) -> list[dict[str, str]]:
-    """Validate exact content bindings, then return scientific blockers."""
+    calibration_activation_reference_path: Path,
+    calibration_activation_reference_sha256: str,
+    calibration_freeze_path: Path,
+    calibration_freeze_sha256: str,
+) -> dict[str, list[dict[str, Any]]]:
+    """Validate exact content bindings, then return capability assessment."""
 
     evaluator = _load_evaluator_module()
     manifest_payload = evaluator._load_addressed_json(manifest_path, manifest_sha256)
@@ -301,6 +386,9 @@ def validate_scientific_inputs(
     )
     evaluator._validate_prediction_receipt(predictions, manifest_sha256, predictions_sha256)
     source = _mapping(predictions["source"], "predictions.source")
+    freeze = _strict_json(calibration_freeze_path, calibration_freeze_sha256)
+    if source.get("calibration_freeze_sha256") != calibration_freeze_sha256:
+        raise PostscoreError("prediction receipt is bound to another Calibration freeze")
     if source.get("feature_cohort_sha256") != cohort_sha256:
         raise PostscoreError("prediction/cohort content binding differs")
     if source.get("bound_probe_sha256") != bound_probe_sha256:
@@ -314,17 +402,55 @@ def validate_scientific_inputs(
     reference = load_feature_reference_bundle(
         calibration_reference_path, expected_sha256=calibration_reference_sha256
     )
-    if cohort.reference_bundle_sha256 != reference.provenance_sha256:
+    if cohort.reference_bundle_sha256 != reference.metadata_sha256:
         # The cohort stores the logical reference provenance digest while the
         # prediction source stores the directory content address. Both must be
         # checked; neither can be substituted for the other.
         raise PostscoreError("cohort logical Calibration-reference binding differs")
 
     bound_payload = _strict_json(bound_probe_path, bound_probe_sha256)
-    reference_metadata = _strict_json(
-        calibration_reference_path / "metadata.json",
-        _sha256_file(calibration_reference_path / "metadata.json"),
+    _load_activation_reference(
+        calibration_activation_reference_path,
+        calibration_activation_reference_sha256,
+        bound_probe_sha256=bound_probe_sha256,
+        calibration_reference_sha256=calibration_reference_sha256,
     )
+    frozen_hashes = _mapping(freeze.get("artifact_hashes"), "calibration_freeze.artifact_hashes")
+    frozen_activation_metadata = _mapping(
+        frozen_hashes.get("calibration_activation_reference_metadata"),
+        "artifact_hashes.calibration_activation_reference_metadata",
+    )
+    frozen_activation_arrays = _mapping(
+        frozen_hashes.get("calibration_activation_reference_arrays"),
+        "artifact_hashes.calibration_activation_reference_arrays",
+    )
+    expected_activation_bindings = (
+        (
+            frozen_activation_metadata,
+            _sha256_file(calibration_activation_reference_path / "metadata.json"),
+        ),
+        (
+            frozen_activation_arrays,
+            _sha256_file(calibration_activation_reference_path / "arrays.npz"),
+        ),
+    )
+    if any(item.get("sha256") != expected for item, expected in expected_activation_bindings):
+        raise PostscoreError(
+            "final Calibration freeze does not bind the supplied activation-reference bytes"
+        )
+    for frozen_item, filename in (
+        (frozen_activation_metadata, "metadata.json"),
+        (frozen_activation_arrays, "arrays.npz"),
+    ):
+        frozen_path = frozen_item.get("path")
+        if (
+            not isinstance(frozen_path, str)
+            or Path(frozen_path).name != filename
+            or Path(frozen_path).parent.name != calibration_activation_reference_sha256
+        ):
+            raise PostscoreError(
+                "Calibration freeze activation-reference path/content address differs"
+            )
     expected = {item.episode_id: item for item in manifest.episodes}
     split_raw = raw_root / SplitName.LOCKED_TEST.value
     split_scores = score_root / SplitName.LOCKED_TEST.value
@@ -361,7 +487,7 @@ def validate_scientific_inputs(
         ):
             raise PostscoreError(f"prediction/score hashes differ for {episode_id}")
     del reference
-    return capability_blockers(bound_payload, reference_metadata)
+    return capability_assessment(bound_payload, activation_reference_loaded=True)
 
 
 def _cost_command(args: argparse.Namespace) -> int:
@@ -386,7 +512,7 @@ def _cost_command(args: argparse.Namespace) -> int:
 
 
 def _preflight_command(args: argparse.Namespace) -> int:
-    blockers = validate_scientific_inputs(
+    assessment = validate_scientific_inputs(
         manifest_path=args.manifest.resolve(), manifest_sha256=args.manifest_sha256,
         predictions_path=args.predictions.resolve(), predictions_sha256=args.predictions_sha256,
         raw_root=args.raw_root.resolve(), score_root=args.score_root.resolve(),
@@ -394,7 +520,12 @@ def _preflight_command(args: argparse.Namespace) -> int:
         bound_probe_path=args.bound_probe.resolve(), bound_probe_sha256=args.bound_probe_sha256,
         calibration_reference_path=args.calibration_reference.resolve(),
         calibration_reference_sha256=args.calibration_reference_sha256,
+        calibration_activation_reference_path=args.calibration_activation_reference.resolve(),
+        calibration_activation_reference_sha256=args.calibration_activation_reference_sha256,
+        calibration_freeze_path=args.calibration_freeze.resolve(),
+        calibration_freeze_sha256=args.calibration_freeze_sha256,
     )
+    blockers = assessment["blockers"]
     if blockers:
         raise PostscoreError(
             "post-scoring scientific inputs cannot define every required receipt:\n"
@@ -403,7 +534,15 @@ def _preflight_command(args: argparse.Namespace) -> int:
     # Reaching this branch would mean a future, properly frozen artifact set has
     # all required capabilities. GPU execution is intentionally not silently
     # started by a preflight command.
-    print(_canonical({"kind": "locked_test_postscore_preflight_passed"}).decode(), flush=True)
+    print(
+        _canonical(
+            {
+                "kind": "locked_test_postscore_preflight_passed",
+                "limitations": assessment["limitations"],
+            }
+        ).decode(),
+        flush=True,
+    )
     return 0
 
 
@@ -415,17 +554,29 @@ def _capabilities_command(args: argparse.Namespace) -> int:
     load_feature_reference_bundle(
         reference_path, expected_sha256=args.calibration_reference_sha256
     )
-    metadata_path = reference_path / "metadata.json"
-    reference_metadata = _strict_json(
-        metadata_path, _sha256_file(metadata_path)
+    activation_reference = _load_activation_reference(
+        args.calibration_activation_reference.resolve(),
+        args.calibration_activation_reference_sha256,
+        bound_probe_sha256=args.bound_probe_sha256,
+        calibration_reference_sha256=args.calibration_reference_sha256,
     )
-    blockers = capability_blockers(bound, reference_metadata)
+    del activation_reference
+    assessment = capability_assessment(bound, activation_reference_loaded=True)
+    blockers = assessment["blockers"]
     if blockers:
         raise PostscoreError(
             "frozen artifacts cannot define the mandatory post-scoring analyses:\n"
             + "\n".join(f"- {item['code']}: {item['message']}" for item in blockers)
         )
-    print(_canonical({"kind": "locked_test_postscore_capabilities_passed"}).decode(), flush=True)
+    print(
+        _canonical(
+            {
+                "kind": "locked_test_postscore_capabilities_passed",
+                "limitations": assessment["limitations"],
+            }
+        ).decode(),
+        flush=True,
+    )
     return 0
 
 
@@ -446,7 +597,11 @@ def _parser() -> argparse.ArgumentParser:
     preflight = subparsers.add_parser(
         "preflight", help="validate all scientific evidence before GPU patching"
     )
-    for name in ("manifest", "predictions", "cohort", "bound-probe", "calibration-reference"):
+    for name in (
+        "manifest", "predictions", "cohort", "bound-probe",
+        "calibration-reference", "calibration-activation-reference",
+        "calibration-freeze",
+    ):
         preflight.add_argument(f"--{name}", type=Path, required=True)
         preflight.add_argument(f"--{name}-sha256", required=True)
     preflight.add_argument("--raw-root", type=Path, required=True)
@@ -461,6 +616,12 @@ def _parser() -> argparse.ArgumentParser:
     capabilities.add_argument("--bound-probe-sha256", required=True)
     capabilities.add_argument("--calibration-reference", type=Path, required=True)
     capabilities.add_argument("--calibration-reference-sha256", required=True)
+    capabilities.add_argument(
+        "--calibration-activation-reference", type=Path, required=True
+    )
+    capabilities.add_argument(
+        "--calibration-activation-reference-sha256", required=True
+    )
     capabilities.set_defaults(handler=_capabilities_command)
     return parser
 

@@ -4,7 +4,8 @@
 ``guard.assert_locked_test_ready`` accepts Locked Test only from a committed
 freeze file naming the frozen task, variable, policy revision, representation
 probe, predictor, alarm thresholds, patch strength, Calibration metrics, and the
-byte hashes of four git-tracked artifacts.
+byte hashes of every git-tracked artifact needed to apply that Calibration state
+to Locked Test without refitting.
 
 Everything written here is *read* from artifacts that already exist; nothing is
 chosen at this point.  The out-of-fold probabilities needed for the Brier score
@@ -24,8 +25,11 @@ from typing import Any
 import numpy as np
 from sklearn.metrics import roc_auc_score
 
-from mech_int_vla.evaluation import brier_score
-from mech_int_vla.feature_artifacts import load_feature_cohort
+from mech_int_vla.config import load_protocol_config
+from mech_int_vla.feature_artifacts import (
+    load_feature_cohort,
+    load_feature_reference_bundle,
+)
 from mech_int_vla.predictors import (
     FeatureSet,
     _calibration_data_hash,
@@ -35,6 +39,7 @@ from mech_int_vla.predictors import (
     _sigmoid,
     _weighted_log_loss,
 )
+from mech_int_vla.probe_artifacts import load_bound_probe_artifact
 
 MODEL_NAMES = ("M0", "M1", "M2")
 RELATIVE_TOLERANCE = 1e-9
@@ -66,11 +71,39 @@ def _canonical(payload: Any) -> bytes:
     ).encode("utf-8")
 
 
+def _episode_weighted_brier(
+    probabilities: np.ndarray, labels: np.ndarray, weights: np.ndarray
+) -> float:
+    """Return Brier loss under the same episode-total-one weights as fitting."""
+
+    probability_array = np.asarray(probabilities, dtype=np.float64)
+    label_array = np.asarray(labels, dtype=np.float64)
+    weight_array = np.asarray(weights, dtype=np.float64)
+    _require(
+        probability_array.ndim == label_array.ndim == weight_array.ndim == 1
+        and probability_array.shape == label_array.shape == weight_array.shape,
+        "Brier inputs must be aligned one-dimensional arrays",
+    )
+    _require(
+        probability_array.size > 0
+        and np.isfinite(probability_array).all()
+        and np.isfinite(label_array).all()
+        and np.isfinite(weight_array).all()
+        and (weight_array > 0.0).all(),
+        "Brier inputs must be nonempty, finite, and positively weighted",
+    )
+    return float(
+        np.average((probability_array - label_array) ** 2, weights=weight_array)
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, required=True)
     parser.add_argument("--feature-root", type=Path, required=True)
     parser.add_argument("--probe", type=Path, required=True)
+    parser.add_argument("--bound-probe", type=Path, required=True)
+    parser.add_argument("--reference-bundle", type=Path, required=True)
     parser.add_argument("--alarm", type=Path, required=True)
     parser.add_argument("--alpha-sign", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
@@ -86,6 +119,21 @@ def main() -> int:
     sign = json.loads(args.alpha_sign.read_text())
     probe = json.loads(args.probe.read_text())
     gate = json.loads(args.reality_gate.read_text())
+    protocol = load_protocol_config(root / "configs")
+    bound_probe = load_bound_probe_artifact(
+        args.bound_probe,
+        protocol=protocol,
+        repo_root=root,
+        expected_sha256=args.bound_probe.resolve().name,
+    )
+    reference_bundle = load_feature_reference_bundle(
+        args.reference_bundle,
+        expected_sha256=args.reference_bundle.resolve().name,
+    )
+    _require(
+        reference_bundle.probe_sha256 == bound_probe.sha256,
+        "Calibration feature reference is not bound to the frozen probe",
+    )
 
     # --- reconstruct the OOF probabilities, bound to the frozen anchors ---
     cohort = load_feature_cohort(
@@ -137,7 +185,7 @@ def main() -> int:
         )
         metrics[name.lower()] = {
             "log_loss": float(calibrated_ll),
-            "brier": float(brier_score(calibrated, labels)),
+            "brier": _episode_weighted_brier(calibrated, labels, weights),
             "auroc": float(roc_auc_score(labels, calibrated, sample_weight=weights)),
         }
 
@@ -172,7 +220,13 @@ def main() -> int:
         },
         "artifact_hashes": {
             "predictor_bundle": tracked(args.feature_root / "predictors.pkl"),
+            "predictor_metadata": tracked(args.feature_root / "predictors.json"),
             "probe": tracked(args.probe),
+            "bound_probe": tracked(args.bound_probe / "bound_probe.json"),
+            "feature_reference_arrays": tracked(args.reference_bundle / "arrays.npz"),
+            "feature_reference_metadata": tracked(
+                args.reference_bundle / "metadata.json"
+            ),
             "reality_gate_manifest": tracked(args.reality_gate),
             "calibration_manifest": tracked(args.manifest),
         },

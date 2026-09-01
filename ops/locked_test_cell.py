@@ -1,5 +1,5 @@
 #!/venv/main/bin/python
-"""Run exactly one preregistered Calibration cell from the locked checkout.
+"""Run exactly one preregistered Locked Test cell from the locked checkout.
 
 This helper intentionally uses ``reconstruct_episode_manifest`` rather than
 ``generate_episode_manifest``.  The latter rehydrates Wilson intervals with
@@ -16,22 +16,52 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+# Make direct absolute-path invocation self-contained.  Configure EGL, offline
+# model access, and the single visible GPU before importing any runtime module
+# that could import MuJoCo, Transformers, or torch.
+_SCRIPT_REPO_ROOT = Path(__file__).resolve().parent.parent
+_SOURCE_ROOT = _SCRIPT_REPO_ROOT / "src"
+if str(_SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SOURCE_ROOT))
+
+REQUIRED_RUNTIME_ENVIRONMENT = {
+    "MUJOCO_GL": "egl",
+    "MUJOCO_EGL_DEVICE_ID": "0",
+    "CUDA_VISIBLE_DEVICES": "0",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "TOKENIZERS_PARALLELISM": "false",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUNBUFFERED": "1",
+}
+
+
+def _configure_runtime_environment() -> None:
+    for name, expected in REQUIRED_RUNTIME_ENVIRONMENT.items():
+        present = os.environ.get(name)
+        if present is not None and present != expected:
+            raise RuntimeError(
+                f"unsafe Locked Test runtime environment: {name}={present!r}, "
+                f"required {expected!r}"
+            )
+        os.environ[name] = expected
+
+
+_configure_runtime_environment()
+
 from mech_int_vla.artifacts import load_rollout_artifact
 from mech_int_vla.config import ConditionSpec, SplitName, load_protocol_config
-from mech_int_vla.libero_runtime import RawLiberoEpisode
 from mech_int_vla.manifest import reconstruct_episode_manifest
-from mech_int_vla.rollout import run_single_episode
 from mech_int_vla.snapshots import (
     load_locked_smolvla,
     load_model_input_lock,
     resolve_snapshot_paths,
 )
-from mech_int_vla.instrumentation import SmolVLAInstrumentation
-
 
 # Collection identity: the raw set and the manifest stay bound to the commit the
 # study was locked at, exactly as for Calibration.
@@ -43,6 +73,7 @@ FREEZE_FILE = "locks/calibration_frozen.json"
 FREEZE_TAG = "calibration-locked-v1"
 POLICY_REVISION = "31d453f7edd78c839a8bbc39744a292686daf0de"
 MANIFEST_SHA256 = "1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49"
+ENVIRONMENT_LOCK_RELPATH = Path("environment.lock")
 
 
 def _git(root: Path, *args: str) -> str:
@@ -52,6 +83,46 @@ def _git(root: Path, *args: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def _git_bytes(root: Path, *args: str) -> bytes:
+    return subprocess.run(
+        ["git", "-C", str(root), *args], check=True, capture_output=True
+    ).stdout
+
+
+def _require_exact_environment_lock(root: Path, supplied: Path) -> Path:
+    expected = (root / ENVIRONMENT_LOCK_RELPATH).resolve(strict=True)
+    if supplied.is_symlink():
+        raise RuntimeError("environment.lock argument may not be a symlink")
+    actual = supplied.resolve(strict=True)
+    if actual != expected:
+        raise RuntimeError("environment.lock must be the exact file in --repo-root")
+    relative = ENVIRONMENT_LOCK_RELPATH.as_posix()
+    try:
+        _git(root, "ls-files", "--error-unmatch", "--", relative)
+        committed = _git_bytes(root, "show", f"HEAD:{relative}")
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError("environment.lock is not tracked at HEAD") from exc
+    if actual.read_bytes() != committed:
+        raise RuntimeError("environment.lock bytes differ from HEAD")
+    return actual
+
+
+def _verify_runtime_environment_and_gpu() -> None:
+    for name, expected in REQUIRED_RUNTIME_ENVIRONMENT.items():
+        if os.environ.get(name) != expected:
+            raise RuntimeError(f"Locked Test runtime environment changed after startup: {name}")
+    try:
+        import torch
+    except ImportError as exc:  # pragma: no cover - rollout-host integration
+        raise RuntimeError("PyTorch is required on the Locked Test GPU host") from exc
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available to the Locked Test cell")
+    if torch.cuda.device_count() != 1:
+        raise RuntimeError(
+            f"expected exactly one visible CUDA device, got {torch.cuda.device_count()}"
+        )
 
 
 def _jsonable(value: Any) -> Any:
@@ -83,7 +154,7 @@ def _load_manifest(path: Path) -> dict[str, Any]:
         path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys
     )
     if not isinstance(payload, dict) or _canonical_sha(payload) != MANIFEST_SHA256:
-        raise RuntimeError("Calibration manifest is not the canonical guarded payload")
+        raise RuntimeError("Locked Test manifest is not the canonical guarded payload")
     return payload
 
 
@@ -141,6 +212,22 @@ def main() -> int:
     args = parser.parse_args()
 
     root = args.repo_root.resolve()
+    if not root.is_dir():
+        raise RuntimeError(f"--repo-root is not a directory: {root}")
+    args.environment_lock = _require_exact_environment_lock(root, args.environment_lock)
+    if args.manifest.is_symlink():
+        raise RuntimeError("manifest may not be a symlink")
+    args.manifest = args.manifest.resolve(strict=True)
+    if not args.manifest.is_file():
+        raise RuntimeError("manifest must be a regular, non-symlink file")
+    args.cache_dir = args.cache_dir.resolve(strict=True)
+    if not args.cache_dir.is_dir():
+        raise RuntimeError("cache directory does not exist")
+    if args.artifact_root.is_symlink():
+        raise RuntimeError("artifact root may not be a symlink")
+    args.artifact_root = args.artifact_root.resolve(strict=False)
+    if not args.artifact_root.parent.is_dir():
+        raise RuntimeError("artifact-root parent does not exist")
     _require_locked_checkout(root)
     protocol = load_protocol_config(root / "configs")
     task = protocol.task_order.tasks[0]
@@ -176,6 +263,13 @@ def main() -> int:
         episode_spec.condition_index,
         episode_spec.condition_parameters,
     )
+    _verify_runtime_environment_and_gpu()
+    # Runtime-heavy imports occur only after all fail-closed provenance, path,
+    # environment, and GPU checks above have passed.
+    from mech_int_vla.instrumentation import SmolVLAInstrumentation
+    from mech_int_vla.libero_runtime import RawLiberoEpisode
+    from mech_int_vla.rollout import run_single_episode
+
     snapshots = resolve_snapshot_paths(
         args.environment_lock, cache_dir=args.cache_dir, local_files_only=True
     )
@@ -208,10 +302,11 @@ def main() -> int:
 
     artifact = load_rollout_artifact(result.artifact_path, expected_task=task)
     if _canonical_sha(artifact.metadata["episode"]) != _canonical_sha(episode_spec.to_dict()):
-        raise RuntimeError("published Calibration artifact provenance differs")
+        raise RuntimeError("published Locked Test artifact provenance differs")
     print(
         json.dumps(
             {
+                "kind": "locked_test_cell_complete",
                 "episode_id": episode_spec.episode_id,
                 "artifact_path": str(result.artifact_path),
                 "status": result.status,

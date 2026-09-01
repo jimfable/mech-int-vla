@@ -6,7 +6,7 @@ freeze verification and materializes the two bookkeeping files the locked test
 runner requires, WITHOUT instantiating any episode:
 
 1. verify the calibration freeze: tag `calibration-locked-v1` at HEAD, clean
-   worktree, and the four frozen artifact hashes from
+   worktree, and every frozen artifact hash from
    `locks/calibration_frozen.json`;
 2. reconstruct the Locked Test manifest (160 episodes = 20 init states x 8
    cells) with `reconstruct_episode_manifest` and verify its canonical digest
@@ -31,9 +31,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from mech_int_vla.config import SplitName, load_protocol_config  # noqa: E402
-from mech_int_vla.manifest import reconstruct_episode_manifest  # noqa: E402
-from mech_int_vla.snapshots import load_model_input_lock  # noqa: E402
+from mech_int_vla.config import SplitName, load_protocol_config
+from mech_int_vla.manifest import reconstruct_episode_manifest
+from mech_int_vla.snapshots import load_model_input_lock
 
 COLLECTION_COMMIT = "18d64941bc8c899b06306fbec21d1c8d2c08f2ea"
 POLICY_REVISION = "31d453f7edd78c839a8bbc39744a292686daf0de"

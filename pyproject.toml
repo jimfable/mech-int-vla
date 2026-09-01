@@ -14,7 +14,7 @@ mech-int-vla-runtime = "mech_int_vla.runtime_cli:main"
 
 [project.optional-dependencies]
 modeling = ["scikit-learn>=1.9,<2"]
-test = ["pytest>=8.0,<10", "scikit-learn>=1.9,<2"]
+test = ["pytest>=8.0,<10", "scikit-learn>=1.9,<2", "torch>=2.8"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

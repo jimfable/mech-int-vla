@@ -2390,3 +2390,90 @@ that experiments, negative results, decisions, and confidence can be audited.
   raw calibration artifacts from the off-instance backup (byte hashes against
   the freeze manifest); (5) rerun runbook Step 0-2 (including dry-run on 2-3
   episodes) before any full collection. Locked Test stays closed until then.
+
+### 2026-09-01 10:27 CEST — LOCKED-READINESS-002: execution repaired; prospective evidence gate remains NO-GO
+
+- **Stage:** Locked Test, strictly pre-access
+- **Question:** Will the complete Locked Test collection, frozen scoring and
+  fixed-order evaluation execute from the committed freeze without path drift,
+  refitting on protected labels, silent resume corruption or a late discovery
+  that mandatory evidence cannot be produced?
+- **Pre-state / commit:** `50a955c2bf6a2156f04dfcbe9f7275defd9ccf2b`;
+  no Locked Test raw directory, score sidecar, prediction or causal result
+  existed. `mein_verständnis.md` was unrelated user material and was excluded
+  locally from Git status without reading, editing, staging or deleting it.
+- **Method:** Performed a static and executable audit of collection, scoring,
+  freeze, evaluation and runbook paths. Added direct fail-closed operational
+  tests; reconstructed the Calibration freeze from its original cohort; loaded
+  the real bound probe, full-Calibration reference and predictor bundle; queried
+  Vast read-only with raw JSON; ran the post-score capability check on the real
+  frozen artifacts; then ran the complete isolated Python 3.12 contract suite.
+- **Inputs and controls:** Frozen manifest `1fd8c818…`; collection commit
+  `18d64941…`; policy `31d453f7…`; bound probe `e94269a1…`; feature reference
+  `4441c760…` (9,455 Calibration states, 160 source episodes); predictor pickle
+  `2b41854a…` plus canonical metadata `47daa982…`; Calibration data
+  `8713c4cb…`. No GPU model, simulator, Locked Test outcome or protected score
+  was loaded. Predictor inference tests expose matrices and names but no label
+  argument, and AST/contracts reject all fit/selection/calibration calls.
+- **Results:**
+  - Collection is now self-contained and resumable with a single global lock,
+    exact tracked executable/environment bytes, machine-readable RTX
+    5090/CUDA/offline-snapshot/disk preflight, immutable cell validation,
+    staging preservation and content-bound completion receipt.
+  - Scoring now uses `build_locked_test_features`, accepts the Calibration probe
+    only through explicit cross-split compatibility, applies the committed
+    all-Calibration M0/M1/M2 predictor and Platt calibrators without a label
+    argument, excludes 0–2 invalid resets per 20-episode condition cell, and
+    content-addresses allocation, cohort, predictions and summary. Three invalid
+    resets in one cell, stale sidecars, extra raw/score paths and orphan staging
+    all abort.
+  - The freeze now names all executable dependencies: bound probe, both
+    reference-bundle files, predictor metadata/pickle, probe, Reality Gate and
+    Calibration manifest. It reproduces byte-for-byte at SHA-256 `52412cfb…`.
+    The previously row-weighted descriptive Brier values were corrected to the
+    §9 episode-total-one estimand: M0 `0.137469593953084`, M1
+    `0.06772738580612056`, M2 `0.0676011578878377`; log loss, AUROC and every
+    frozen selection reproduced unchanged.
+  - The fixed-order evaluator verifies 160 raw artifacts, allowed invalid-reset
+    exclusions, prediction/raw/freeze hashes, M2-vs-M1 and M2-vs-M0 paired
+    comparisons, Brier/AUROC intervals, lead time, condition rankings, costs and
+    immutable causal/sensitivity receipts before publishing one report.
+  - The real pre-access capability gate correctly returned nonzero for three
+    missing preregistered evidence inputs: (1) amendment 9a requires an object-
+    position decoder and all-object pose trace, but the freeze has only the
+    circular `theta_rel` probe and primary-object state; (2) §10's two-of-three
+    supporting-layer claim lacks executable frozen non-selected-layer probe
+    coefficients; (3) the feature reference lacks the natural Calibration
+    activation matrix required for the activation-space 5-NN off-manifold
+    threshold. No angular/coverage proxy or post-access refit was substituted.
+  - Verification: 446 tests collected; 443 passed and 3 optional-runtime tests
+    skipped. The new/affected focused suite also passed after import formatting;
+    byte-diff checks and Python compilation passed. The authenticated Vast state
+    is still `instances=[]`, balance `-4.275898916619454` with the negative-
+    balance threshold enabled.
+- **Interpretation:** The two earlier operational failure modes are removed from
+  Collection and frozen Scoring. The study as a whole is nevertheless not safe
+  to open: the prospective gate proves that the already-required causal and
+  sensitivity report cannot be computed honestly from the old freeze. This is
+  a scientific-input blocker, not a software exception to bypass.
+- **Confidence:** high. Every positive readiness claim has direct synthetic or
+  real-artifact execution evidence; the NO-GO is reproduced on the exact frozen
+  bytes before protected access. Remote GPU behavior remains untested because no
+  instance exists, which is why the remote preflight remains mandatory.
+- **Decision:** Keep Locked Test closed. Do not move `calibration-locked-v1` or
+  `locked-test-score-v1` from `50a955c…`, do not provision/collect even after
+  billing is restored, and do not invent proxy sensitivity results. Commit and
+  push the repair/audit record without authorization tags.
+- **Next step:** Study owner must prospectively choose whether to (a) approve a
+  pre-access amendment that collects/freezes the missing Calibration position,
+  supporting-layer and natural-activation evidence, or (b) amend the report to
+  mark the impossible secondary diagnostics unavailable and remove the unsupported
+  multi-layer claim. Separately, restore Vast billing and provision/rebuild one
+  RTX 5090 only after that scientific choice is resolved; rerun runbook §0 and
+  §5.0 before section 1.
+- **Artifacts:** `AMENDMENTS.md` 2026-09-01 entry; `ops/locked_test_runbook.md`;
+  collection/scoring/evaluation/postscore scripts and their direct tests;
+  expanded `locks/calibration_frozen.json`; tracked feature-reference arrays and
+  metadata (to be included in the implementing commit).
+- **Compute / cost:** Local CPU-only verification and package-cache use; no GPU
+  seconds, no simulator episodes and no new Vast charge.

@@ -1311,20 +1311,13 @@ def build_calibration_features(
     *,
     protocol: ProtocolConfig,
     repo_root: str | Path,
-    split: str = "calibration",
 ) -> tuple[FeatureReferenceBundle, FeatureCohort]:
-    """Build OOF features from one exact score allocation for a frozen split.
-
-    ``split`` defaults to "calibration" and is threaded mechanically through
-    the split-bound validators; the default path is byte-identical to the
-    pre-parameterization behavior. Only "calibration" (Calibration scoring)
-    and "locked_test" (Locked Test scoring) are accepted by the validators.
-    """
+    """Build OOF Calibration features from one exact score allocation."""
 
     receipt, probe, bound_probe_sha256 = _validated_feature_allocation(
         score_receipt,
         bound_probe,
-        expected_split=split,
+        expected_split="calibration",
         protocol=protocol,
         repo_root=repo_root,
     )
@@ -1333,7 +1326,7 @@ def build_calibration_features(
         raw_artifacts,
         score_sidecars,
         probe,
-        expected_split=split,
+        expected_split="calibration",
         probe_sha256=bound_probe_sha256,
         allocation_receipt=receipt,
     )

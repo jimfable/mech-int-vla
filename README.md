@@ -47,9 +47,12 @@ task-rank-1 Discovery reset cells. Every cell settled for exactly ten no-op acti
 produced the expected 8-D policy state, and passed the frozen penetration,
 stability, workspace, and initial-success validity checks. This is not the GPU
 Reality Gate: no policy action, terminal success label, probe result, score,
-intervention, or causal result has been observed. The Vast instance remains stopped
-between concrete jobs; resuming it currently requires a usable authenticated Vast
-console or API session.
+intervention, or causal result has been observed. The prior Vast instance no longer
+exists. The authenticated account currently has no instance and a negative balance,
+so a human must restore billing and provision a new 1x RTX 5090 before collection.
+The Locked Test supervisor then performs a machine-readable, fail-closed check of
+the exact runtime, repository, offline snapshots, output paths and free disk before
+it loads a model or creates a simulator.
 
 ## Reproducibility contract
 

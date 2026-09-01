@@ -1,4 +1,4 @@
-# Locked Test runbook (approved 2026-08-25; strictly before Locked Test opening)
+# Locked Test runbook (approved 2026-08-25; hardened 2026-09-01)
 
 Applies the approved amendments (AMENDMENTS.md 2026-08-25). Nothing in this
 runbook reads Locked Test data; every evaluation step is pre-fixed here and in
@@ -16,60 +16,110 @@ before finalizing.
 ## 0. Freeze verification (local, CPU)
 
 ```bash
-cd mech-int-vla
+cd /Users/fynnvanriessen/Developer/research/mech-int-vla
 git rev-parse HEAD                                  # == tag commit of calibration-locked-v1
 git rev-list -n 1 tags/calibration-locked-v1        # must equal HEAD
 git status --porcelain                              # must be empty
 # per-artifact byte hashes: locks/calibration_frozen.json -> artifact_hashes
-../tiny-vla-interp/.venv/bin/python ops/prepare_locked_test_artifacts.py \
-    --repo-root . --environment-lock environment.lock
+PYTHONPATH=src uv run --isolated --no-project --python 3.12 \
+  --with 'numpy==2.2.6' --with 'PyYAML>=6,<7' \
+  python ops/prepare_locked_test_artifacts.py \
+    --repo-root /Users/fynnvanriessen/Developer/research/mech-int-vla \
+    --environment-lock /Users/fynnvanriessen/Developer/research/mech-int-vla/environment.lock
 # prints 160-episode manifest sha256 1fd8c818… and writes
-#   artifacts/manifests/locked-test-manifest-1fd8c818….json
+#   artifacts/manifests/locked-test-manifest-1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49.json
 #   artifacts/locked-test-authority.json            (locked_test_accessed: True)
 # ANY digest mismatch -> STOP + report; do not start the instance.
 ```
+
+Before proceeding to section 1, run the mandatory pre-access capability gate
+in section 5.0. With the current freeze it exits nonzero for the three recorded
+scientific-evidence blockers, so sections 1–4 are currently prohibited even
+after infrastructure is restored. This ordering prevents spending collection
+or scoring GPU time before the complete preregistered analysis is executable.
 
 ## 1. Instance start + environment verification
 
 1. `vastai start instance <ID>` (single RTX 5090, disk-preserved).
 2. `vastai execute <ID> "nvidia-smi"` → expect 1× RTX 5090, 0% util.
-3. Verify the instance layout used by the freeze (`/venv/main` python,
-   `/workspace/hf-cache` with the policy snapshot, `/workspace/runstate`,
-   LeRobot v0.6.0 + hf-libero==0.1.4, MuJoCo EGL). If the layout or any
-   pinned package version differs from `environment-gpu.freeze` →
-   STOP + report, no rollout.
+3. Verify the instance layout used by the freeze: `/venv/main/bin/python`,
+   `/workspace/hf-cache`, `/workspace/runstate`, and
+   `/workspace/research-artifacts`. Verify
+   `environment-gpu.freeze` has SHA-256
+   `d738fb679db3682292481dfb74154b2d1d22da37630fd0156092c281ff31f821`
+   and verify the package/GPU values in that file (including LeRobot v0.6.0,
+   `hf-libero==0.1.4`, CUDA 13.0, and MuJoCo EGL). If any value differs → STOP
+   + report, no rollout.
 4. Copy the current repo (the frozen HEAD from step 0) to
    `/workspace/locked-test-checkout`; `cd` there and verify
    `git rev-parse HEAD` == local HEAD and `calibration-locked-v1` == HEAD and
-   clean tree. Copy the manifest + authority into `/workspace/runstate/`.
+   clean tree. Copy these exact files to `/workspace/runstate/`:
+   `locked-test-manifest-1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49.json`
+   and `locked-test-authority.json`. Create and verify writable
+   `/workspace/research-artifacts`, `/workspace/run-logs`, and
+   `/workspace/runstate` before the preflight.
 
-## 2. Dry run (2–3 episodes, fail-closed)
+## 2. First three collection cells + CPU-safe preflight (fail-closed)
 
-Run the cell script directly on the first three cell indices; each cell is one
-episode and runs the full frozen chain (snapshot, instrumentalization,
-rollout, raw artifact write, provenance). Expect per-cell wall time in the
-Calibration envelope (≈6–8 min or less on this GPU); expect valid artifacts
-with policy_revision `31d453f7…` and code_commit `18d64941…`.
+Run the CPU-safe supervisor plan before opening the collection and require
+`resume_episodes: 0`. Only after that passes, indices 0, 1, and 2 are the first
+three **real Locked Test collection cells**, not disposable diagnostics. Launch
+each index exactly once, sequentially. Each cell runs the full frozen chain
+(snapshot, instrumentation, rollout, atomic raw artifact publication,
+provenance). Expect per-cell wall time in the Calibration envelope (≈6–8 min or
+less on this GPU); expect valid artifacts with policy_revision `31d453f7…` and
+code_commit `18d64941…`. Then run the same plan again and require exactly three
+resume-validated artifacts.
 
 ```bash
-/venv/main/bin/python /workspace/locked-test-checkout/ops/locked_test_cell.py \
-    --index 0 --repo-root /workspace/locked-test-checkout \
-    --environment-lock /workspace/locked-test-checkout/environment.lock \
-    --manifest /workspace/runstate/locked-test-manifest-1fd8c818….json \
-    --cache-dir /workspace/hf-cache \
-    --artifact-root /workspace/research-artifacts/raw \
-    [--log-dir /workspace/run-logs/locked-test]
+set -euo pipefail
+supervisor=(
+    /venv/main/bin/python
+    /workspace/locked-test-checkout/ops/locked_test_supervisor.py
+    --repo-root /workspace/locked-test-checkout
+    --environment-lock /workspace/locked-test-checkout/environment.lock
+    --manifest /workspace/runstate/locked-test-manifest-1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49.json
+    --authority /workspace/runstate/locked-test-authority.json
+    --cache-dir /workspace/hf-cache
+    --artifact-root /workspace/research-artifacts/raw
+    --cell-script /workspace/locked-test-checkout/ops/locked_test_cell.py
+    --log-dir /workspace/run-logs/locked-test
+    --completion-receipt /workspace/runstate/locked-test-complete.json
+)
+"${supervisor[@]}" --plan-only
+
+for index in 0 1 2; do
+    /venv/main/bin/python /workspace/locked-test-checkout/ops/locked_test_cell.py \
+        --index "$index" \
+        --repo-root /workspace/locked-test-checkout \
+        --environment-lock /workspace/locked-test-checkout/environment.lock \
+        --manifest /workspace/runstate/locked-test-manifest-1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49.json \
+        --cache-dir /workspace/hf-cache \
+        --artifact-root /workspace/research-artifacts/raw
+done
+"${supervisor[@]}" --plan-only
 ```
 
-(Exact flag set as declared by `locked_test_cell.py --help`; the guard
-`assert_locked_test_ready` runs before every episode.) Then run the supervisor
-in plan-only mode and confirm `{"kind":"locked_test_plan_validated",
-"episodes":160,…}`. Any deviation from the freeze (wrong manifest, authority,
-tag, or artifact bytes) → STOP + report. Delete the three dry-run episodes'
-raw artifacts (they are not part of the manifest collection) unless the
-supervisor's resume logic accepts them — if it does not, the runbook keeps them
-as pre-collection diagnostics and the supervisor is started fresh over the 160
-manifest cells.
+The cell sets and verifies EGL, offline Hugging Face/Transformers access, and a
+single visible GPU before loading runtime code. The plans must report
+`{"kind":"locked_test_plan_validated","episodes":160,"resume_episodes":0,…}`
+before collection access and the same event with `resume_episodes:3` afterwards;
+it resolves and hashes local snapshots and verifies paths, writable output
+parents, Python/cell-script executability, disk capacity, the global supervisor
+lock, and every existing artifact without loading a GPU model or simulator. Its
+`remote_runtime` object must machine-readably report: Python 3.12.13 under
+`/venv/main`; the exact tracked `environment-gpu.freeze` digest
+`d738fb679db3682292481dfb74154b2d1d22da37630fd0156092c281ff31f821`;
+all required distribution versions; one physical/visible
+`NVIDIA GeForce RTX 5090` at index 0 and compute capability 12.0; the observed
+host-driver version (recorded, not frozen); torch 2.11.0+cu130 with CUDA 13.0;
+EGL/offline environment values; exact
+offline policy/base-VLM snapshot paths; and `free_disk_bytes`. Any absent or
+mismatched field is a hard stop.
+Indices 0–2 remain immutable resume artifacts. **Never delete, overwrite, or
+rerun them.** Any failed launch, corrupt artifact, wrong resume count, or freeze
+deviation → STOP + preserve everything + report; do not relaunch an index
+without an explicit protocol-deviation authorization.
 
 ## 3. Full collection (160 rollouts)
 
@@ -77,7 +127,7 @@ manifest cells.
 /venv/main/bin/python /workspace/locked-test-checkout/ops/locked_test_supervisor.py \
     --repo-root /workspace/locked-test-checkout \
     --environment-lock /workspace/locked-test-checkout/environment.lock \
-    --manifest /workspace/runstate/locked-test-manifest-1fd8c818….json \
+    --manifest /workspace/runstate/locked-test-manifest-1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49.json \
     --authority /workspace/runstate/locked-test-authority.json \
     --cache-dir /workspace/hf-cache \
     --artifact-root /workspace/research-artifacts/raw \
@@ -86,23 +136,130 @@ manifest cells.
     --completion-receipt /workspace/runstate/locked-test-complete.json
 ```
 
-Supervision: log lines `starting/resume_validated` for 160 episode ids
+Supervision: events `locked_test_episode_starting`,
+`locked_test_resume_validated`, and `locked_test_episode_completed` cover the
+160 episode ids
 (`libero_10-task5-locked-test-…`); stop on `unexplained staging`,
-`authority mismatch`, or any `RuntimeError` — then STOP, report, resume only
-via the same command (it resume-validates). `plan-only` first (step 2) also
-validates the plan. Expected wall time ≈5–10 GPU h.
+`non-manifest entries`, `authority mismatch`, child failure, or any
+`RuntimeError` — then STOP and report. The supervisor holds one non-blocking
+global lock derived from the canonical raw-artifact root, so a second
+supervisor cannot collect concurrently. Normal continuation uses exactly the
+same command and resume-validates every published artifact. Expected wall time
+≈5–10 GPU h.
+
+**Fail-closed staging recovery:** never remove or rename a
+`.libero_10-task5-locked-test-….tmp-*` directory ad hoc. Stop all collection
+processes; preserve and inventory/hash the staging directory and matching log;
+verify the final episode directory is absent; record the failure cause and
+report it. Resume is forbidden while staging or any other non-manifest entry is
+present. Cleanup/relaunch requires explicit written deviation authorization;
+the supervisor never performs it automatically.
 
 ## 4. Scoring (frozen predictor/probe applied to Locked Test)
 
 Frozen scoring tooling is `ops/locked_test_score.py` (Locked Test bound, tag
-`locked-test-score-v1`, same predictor bundle and probe bytes as the freeze),
-invoked with the Calibration scoring parameter pattern (see the Calibration
-score log entries), now against the Locked Test manifest/authority and
-`--raw-root …/raw/locked_test`. It writes the score allocation, features and
-`score-feature-summary.json` with `locked_test_accessed: True`. Expected wall
-time ≈11–18 GPU h. Budget gate: beyond 24 h → stop and report.
+`locked-test-score-v1`, exact probe/reference/predictor bytes from the freeze).
+`--raw-root` is always the parent before the split directory; the scorer adds
+`locked_test` exactly once and rejects a split-root argument.
+
+```bash
+/venv/main/bin/python \
+    /workspace/locked-test-checkout/ops/locked_test_score.py \
+    --repo-root /workspace/locked-test-checkout \
+    --environment-lock /workspace/locked-test-checkout/environment.lock \
+    --cache-dir /workspace/hf-cache \
+    --manifest /workspace/runstate/locked-test-manifest-1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49.json \
+    --authority /workspace/runstate/locked-test-authority.json \
+    --raw-root /workspace/research-artifacts/raw \
+    --calibration-freeze /workspace/locked-test-checkout/locks/calibration_frozen.json \
+    --bound-probe /workspace/locked-test-checkout/artifacts/calibration-analysis-rescore-001/bound-probe/e94269a149491d30a8ba52e8d66c816c87ce489e2d37f0b4179b9f4ead5a1146 \
+    --calibration-feature-reference /workspace/locked-test-checkout/artifacts/calibration-features-rescore-001/reference/4441c760eb1bd4acb9ff43dceb70986a0848f96c77ddfff19f836022b2b39da1 \
+    --calibration-predictor-metadata /workspace/locked-test-checkout/artifacts/calibration-features-rescore-001/predictors.json \
+    --calibration-predictor-bundle /workspace/locked-test-checkout/artifacts/calibration-features-rescore-001/predictors.pkl \
+    --score-root /workspace/research-artifacts/scores \
+    --feature-root /workspace/research-artifacts/locked-test-features
+```
+
+The final JSON event names the immutable score allocation, feature cohort,
+prediction receipt and summary paths plus all digests. Copy those values exactly
+into section 5; do not infer a newest directory. Predictions are created by
+applying the all-Calibration models without a label argument. Expected wall time
+≈11–18 GPU h. Budget gate: beyond 24 h → stop and report.
 
 ## 5. Evaluation — FIXED template (no improvisation; PREREG §11 order)
+
+### 5.0 Mandatory post-scoring capability gate (run before Locked Test collection)
+
+The final evaluator requires causal, sensitivity, and cost receipts; it never
+accepts manually entered scientific results. Before starting section 1, run the
+CPU-only frozen-capability check:
+
+```bash
+cd /Users/fynnvanriessen/Developer/research/mech-int-vla
+../tiny-vla-interp/.venv/bin/python ops/locked_test_postscore.py capabilities \
+    --bound-probe artifacts/calibration-analysis-rescore-001/bound-probe/e94269a149491d30a8ba52e8d66c816c87ce489e2d37f0b4179b9f4ead5a1146/bound_probe.json \
+    --bound-probe-sha256 e94269a149491d30a8ba52e8d66c816c87ce489e2d37f0b4179b9f4ead5a1146 \
+    --calibration-reference artifacts/calibration-features-rescore-001/reference/4441c760eb1bd4acb9ff43dceb70986a0848f96c77ddfff19f836022b2b39da1 \
+    --calibration-reference-sha256 4441c760eb1bd4acb9ff43dceb70986a0848f96c77ddfff19f836022b2b39da1
+```
+
+With the current freeze this command intentionally stops before GPU work and
+reports three exact blockers: the frozen probe targets circular relative
+orientation rather than object position required by 9a; no executable frozen
+coefficients exist for the two non-selected supporting locations required by
+PREREG §10; and the feature reference contains no natural Calibration
+activation matrix for the activation-space 5-NN off-manifold threshold. Do not
+replace these fields with angular/coverage proxies and do not refit after
+Locked Test access. Until an explicitly approved pre-access amendment supplies
+and freezes the missing evidence, **sections 1–4 must not be started**. A
+nonzero capability-gate exit is a protocol blocker, not permission to omit
+sections 7 or 9.
+
+After a future valid freeze and completed scoring, the full content-binding
+preflight is:
+
+```bash
+/venv/main/bin/python \
+    /workspace/locked-test-checkout/ops/locked_test_postscore.py preflight \
+    --manifest /workspace/runstate/locked-test-manifest-1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49.json \
+    --manifest-sha256 1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49 \
+    --predictions "$PREDICTION_RECEIPT_PATH" \
+    --predictions-sha256 "$PREDICTION_RECEIPT_SHA256" \
+    --raw-root /workspace/research-artifacts/raw \
+    --score-root /workspace/research-artifacts/scores \
+    --cohort "$FEATURE_COHORT_PATH" \
+    --cohort-sha256 "$FEATURE_COHORT_SHA256" \
+    --bound-probe "$BOUND_PROBE_PATH" \
+    --bound-probe-sha256 "$BOUND_PROBE_SHA256" \
+    --calibration-reference "$CALIBRATION_REFERENCE_PATH" \
+    --calibration-reference-sha256 "$CALIBRATION_REFERENCE_SHA256"
+```
+
+The variables are copied byte-for-byte from the canonical Locked Test scoring
+receipt; unset variables are a hard stop. This checks the manifest/prediction,
+all 160 Raw directories, every valid score sidecar, feature cohort, bound probe,
+and Calibration reference content links before intervention work.
+
+Cost evidence is the only post-score receipt that may be operator supplied.
+Publish it after recording all five stages, in this exact order and unit format:
+
+```bash
+/venv/main/bin/python \
+    /workspace/locked-test-checkout/ops/locked_test_postscore.py cost \
+    --manifest-sha256 1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49 \
+    --predictions-sha256 "$PREDICTION_RECEIPT_SHA256" \
+    --stage "collection,$COLLECTION_WALL_SECONDS,$COLLECTION_GPU_HOURS,$COLLECTION_CHARGES" \
+    --stage "scoring,$SCORING_WALL_SECONDS,$SCORING_GPU_HOURS,$SCORING_CHARGES" \
+    --stage "evaluation,$EVALUATION_WALL_SECONDS,$EVALUATION_GPU_HOURS,$EVALUATION_CHARGES" \
+    --stage "causal_patching,$CAUSAL_WALL_SECONDS,$CAUSAL_GPU_HOURS,$CAUSAL_CHARGES" \
+    --stage "sensitivity,$SENSITIVITY_WALL_SECONDS,$SENSITIVITY_GPU_HOURS,$SENSITIVITY_CHARGES" \
+    --output-root /workspace/research-artifacts/postscore/cost
+```
+
+Add one `--budget-gate-stop "<description>"` per actual stop. Zero values are
+valid evidence; omitted stages, reordered stages, negatives, NaN/Infinity, or
+duplicate stop descriptions fail closed. Publication is canonical,
+content-addressed, immutable, and resume-verified.
 
 Output is a single report with sections in this exact order:
 
@@ -136,14 +293,44 @@ Output is a single report with sections in this exact order:
     privileged state) with M2 ≫ M0 — reported exactly as measured, whatever
     the outcome; "weder Lift noch Spezifität" → Negativbefund-Publizierpfad.
 
+Once approved producers have created the immutable causal and sensitivity
+receipts, run the final evaluator exactly once:
+
+```bash
+/venv/main/bin/python \
+    /workspace/locked-test-checkout/ops/locked_test_evaluate.py \
+    --manifest /workspace/runstate/locked-test-manifest-1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49.json \
+    --manifest-sha256 1fd8c8184bb7028ad89ef42e05ef4a12939ce11be733d4c59848cc407bc15a49 \
+    --raw-root /workspace/research-artifacts/raw \
+    --predictions "$PREDICTION_RECEIPT_PATH" \
+    --predictions-sha256 "$PREDICTION_RECEIPT_SHA256" \
+    --calibration-freeze /workspace/locked-test-checkout/locks/calibration_frozen.json \
+    --calibration-freeze-sha256 52412cfbc37b7fa8bf07b5a5df07e23aac9001d2961ceef05f45aa80ea506c2e \
+    --reality-gate-lock /workspace/locked-test-checkout/locks/reality_gate_frozen.json \
+    --reality-gate-lock-sha256 4e0d4d5cb7e42874bed4e1f93a3e016a5a248803d06d0acc9d3fb8e435e9a151 \
+    --causal-receipt "$CAUSAL_RECEIPT_PATH" \
+    --causal-receipt-sha256 "$CAUSAL_RECEIPT_SHA256" \
+    --sensitivity-receipt "$SENSITIVITY_RECEIPT_PATH" \
+    --sensitivity-receipt-sha256 "$SENSITIVITY_RECEIPT_SHA256" \
+    --cost-receipt "$COST_RECEIPT_PATH" \
+    --cost-receipt-sha256 "$COST_RECEIPT_SHA256" \
+    --output-root /workspace/research-artifacts/evaluation
+```
+
+Unset variables, a digest mismatch, missing evidence, an out-of-order section,
+or a second outcome-dependent analysis attempt are hard stops.
+
 ## 6. Post-run (same session)
 
 1. Stop the instance (disk preserved); the instance is started again only by
    a new explicit instruction.
 2. Copy off-instance: raw artifacts, completion receipt, score features,
    summaries, run logs → `artifacts/` on the local checkout; verify file
-   counts and hashes against receipts.
+   counts and hashes against the `locked_test_collection_receipt`. Preserve the
+   global-lock file and any staging directory in the incident bundle if the run
+   stopped; do not treat either as a collection artifact or silently clean it.
 3. Write the final report per this template into `log.md` + a report file;
    amendment-4 addendum (if run) as an explicitly exploratory section.
-4. Commit + push; tag scoring code `locked-test-score-v1` already exists at
-   the tooling commit. No Month-2 work without a new instruction.
+4. Commit + push. Move `calibration-locked-v1` and `locked-test-score-v1` to the
+   final verified tooling commit only after the section-5.0 capability blockers
+   are resolved prospectively. No Month-2 work without a new instruction.

@@ -955,3 +955,60 @@ left to environment resolution.
   commit adding this entry plus the tooling; the tag `calibration-locked-v1`
   is moved to that commit with the freeze payload unchanged, per the
   2026-08-07 precedent).
+
+### 2026-09-01 — Make the approved Locked Test path fail-closed and executable
+
+- **Prior protocol commit:** `50a955c2bf6a2156f04dfcbe9f7275defd9ccf2b`
+- **Technical reason:** A prospective, code-only readiness audit after two
+  aborted attempts found that the 2026-08-25 tooling could not safely execute
+  the already-approved protocol. The collection scripts depended on an
+  unstated `PYTHONPATH`, the documented preflight flags did not match the CLI,
+  concurrent supervisors were not excluded, and resume/staging checks did not
+  fully bind the executable and output paths. More importantly, the scoring
+  entry point still called the Calibration feature/fitting path: it required a
+  stale probe binding, could interpret the raw root incorrectly, and could
+  refit predictors using Locked Test labels instead of applying the frozen
+  predictors. There was no complete executable entry point for the fixed §11
+  evaluation order. Finally, the Calibration freeze named the predictor pickle
+  but omitted the source-bound probe, Calibration-only feature reference and
+  predictor metadata needed to apply it independently. Its Brier values were
+  averaged over state rows, contrary to §9's rule that each episode contributes
+  total sample weight one.
+- **Exact change:** Harden collection with self-contained imports, exact
+  manifest/authority/repository path binding, an exclusive global lock,
+  fail-closed writable/disk/runtime/GPU/offline-snapshot preflight, immutable
+  resume validation and preservation of unexplained staging. Replace the
+  Locked Test scoring flow with the split-specific feature builder and apply
+  only the frozen predictor bundle and Platt calibrators; Locked Test labels may
+  be read only for evaluation and are never passed to a fit or selection API.
+  Add the deterministic evaluation entry point in the preregistered §11 order,
+  excluding failed invalid-reset attempts while enforcing the per-cell 10%
+  validity envelope. Extend `locks/calibration_frozen.json` and its guard with
+  byte hashes for the bound probe, predictor metadata and both files of the
+  full-Calibration reference bundle, and track those reference bytes. Recompute
+  Calibration Brier scores with episode-total-one weights: M0
+  `0.137469593953084`, M1 `0.06772738580612056`, M2
+  `0.0676011578878377`. Restore the Calibration feature-builder source to its
+  already-scored digest; Locked Test uses the separate locked builder.
+- **Affected hypotheses/metrics:** No hypothesis, model, feature, label,
+  threshold, alarm rule, probe, patch strength, decision bar, analysis order or
+  Locked Test estimand changes. The only numerical correction is to the three
+  descriptive Calibration Brier scores; Calibration log loss/AUROC and every
+  frozen selection remain identical. The Locked Test Brier implementation uses
+  the same episode-balanced estimand.
+- **Outcome visibility:** All Calibration outcomes and the operational blocker
+  were visible. No Locked Test rollout directory, success label, score feature,
+  prediction or causal output existed or was inspected; only the deterministic
+  160-cell manifest and authority bookkeeping existed. These repairs therefore
+  precede all protected outcomes.
+- **Bias risk and mitigation:** The main risk is that operational repair could
+  conceal analytical discretion. Mitigation is structural: frozen inputs are
+  expanded rather than replaced, predictor loading verifies both metadata and
+  pickle against their committed digests, the scorer has no fitting path, the
+  evaluation order/seed/bars are executable constants, invalid cases remain
+  public, and direct fail-closed tests exercise tampering, concurrency, resume,
+  split binding and label-independent prediction. Both freeze/scoring tags are
+  moved only to the final clean, fully tested commit, following the 2026-08-07
+  tag-move precedent.
+- **Implementing commit:** pending until the prospective repair and clean-clone
+  verification are complete; filled in immediately after that commit.

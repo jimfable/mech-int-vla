@@ -527,6 +527,8 @@ def validate_locked_test_prediction_coverage(
     expected_manifest: Manifest,
     model1: Sequence[EpisodePredictions],
     model2: Sequence[EpisodePredictions],
+    *,
+    invalid_episode_ids: Sequence[str] = (),
 ) -> None:
     """Require the complete preregistered 20-by-8 Locked Test grid.
 
@@ -572,11 +574,36 @@ def validate_locked_test_prediction_coverage(
     if len(expected_by_id) != 160:
         raise EvaluationError("locked_test manifest must contain exactly 160 episodes")
 
+    invalid = tuple(invalid_episode_ids)
+    if any(not isinstance(value, str) or not value for value in invalid):
+        raise EvaluationError("invalid_episode_ids must contain non-empty strings")
+    if len(invalid) != len(set(invalid)):
+        raise EvaluationError("invalid_episode_ids contains duplicates")
+    unknown_invalid = sorted(set(invalid) - set(expected_by_id))
+    if unknown_invalid:
+        raise EvaluationError(
+            f"invalid reset set contains episodes outside the manifest: {unknown_invalid}"
+        )
+    invalid_by_cell: dict[int, int] = {}
+    for episode_id in invalid:
+        cell = expected_by_id[episode_id].condition_index
+        invalid_by_cell[cell] = invalid_by_cell.get(cell, 0) + 1
+    # Each condition cell contains 20 init-ID episodes.  The frozen validity
+    # envelope permits at most ten percent invalid resets in any one cell.
+    overflowing = {
+        cell: count for cell, count in sorted(invalid_by_cell.items()) if count > 2
+    }
+    if overflowing:
+        raise EvaluationError(
+            "locked_test invalid resets exceed 10% in condition cells: "
+            f"{overflowing}"
+        )
+
     indexed_models = (
         _episodes_by_id(model1, "model1"),
         _episodes_by_id(model2, "model2"),
     )
-    expected_ids = set(expected_by_id)
+    expected_ids = set(expected_by_id) - set(invalid)
     for model_name, indexed in zip(("model1", "model2"), indexed_models, strict=True):
         actual_ids = set(indexed)
         if actual_ids != expected_ids:
@@ -614,11 +641,18 @@ def locked_test_paired_prediction_comparison(
     expected_manifest: Manifest,
     model1: Sequence[EpisodePredictions],
     model2: Sequence[EpisodePredictions],
+    *,
+    invalid_episode_ids: Sequence[str] = (),
     **comparison_options: Any,
 ) -> PairedPredictionResult:
     """Run the primary comparison only after exact Locked Test coverage validation."""
 
-    validate_locked_test_prediction_coverage(expected_manifest, model1, model2)
+    validate_locked_test_prediction_coverage(
+        expected_manifest,
+        model1,
+        model2,
+        invalid_episode_ids=invalid_episode_ids,
+    )
     return paired_prediction_comparison(model1, model2, **comparison_options)
 
 

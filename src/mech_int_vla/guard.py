@@ -17,8 +17,8 @@ from .config import (
     CalibrationGuardConfig,
     CalibrationSelectionConfig,
     LockedTestGuardConfig,
-    ProtocolConfig,
     PredictorCandidateConfig,
+    ProtocolConfig,
     TaskSpec,
 )
 
@@ -763,7 +763,11 @@ def _stream_sha256(path: Path, *, name: str) -> str:
 def _validate_artifact_hashes(repo: Path, payload: Mapping[str, Any]) -> None:
     hashes = _required_mapping(payload, "artifact_hashes", LockedTestGuardError)
     required = {
+        "bound_probe",
+        "feature_reference_arrays",
+        "feature_reference_metadata",
         "predictor_bundle",
+        "predictor_metadata",
         "probe",
         "reality_gate_manifest",
         "calibration_manifest",

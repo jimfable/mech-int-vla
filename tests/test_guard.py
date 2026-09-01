@@ -20,7 +20,11 @@ from mech_int_vla.guard import (
 ROOT = Path(__file__).parents[1]
 POLICY = "31d453f7edd78c839a8bbc39744a292686daf0de"
 ARTIFACT_CONTENTS = {
+    "bound_probe": b"source-bound-probe-artifact",
+    "feature_reference_arrays": b"calibration-reference-arrays",
+    "feature_reference_metadata": b"calibration-reference-metadata",
     "predictor_bundle": b"canonical-m0-m1-m2-predictor-bundle",
+    "predictor_metadata": b"canonical-m0-m1-m2-predictor-metadata",
     "probe": b"probe-artifact",
     "reality_gate_manifest": b"reality-gate-manifest",
     "calibration_manifest": b"calibration-manifest",

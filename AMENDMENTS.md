@@ -1015,3 +1015,61 @@ left to environment resolution.
   `278112a1c5621feb80b916bc658abec3e60d3da0` (clean-clone-discovered scorer
   import bootstrap plus its direct regression test). The following record-only
   commit fills these hashes without changing executable or scientific bytes.
+
+### 2026-09-01 — Resolve unavailable secondary evidence without post-outcome substitution
+
+- **Prior protocol commit:** `f535375a406d898501d5bf1252250d6bdad7742d`
+- **Technical reason:** The final prospective capability audit found that three
+  approved or preregistered reports cannot be computed from the frozen
+  Calibration evidence as written. The selected circular probe decodes relative
+  primary-object orientation, not the all-object positions needed by Amendment
+  9a. The bound probe contains executable coefficients only for the selected
+  architectural location, so the two-of-three-location criterion cannot be
+  evaluated without a post-freeze refit. Finally, the ten-action causal
+  intervention defines action effects but no closed-loop patched episode outcome,
+  so the approved broken-success rescue/break counts have no registered outcome
+  semantics. In contrast, the natural selected-representation activations needed
+  by the preregistered off-manifold comparison already exist in the completed,
+  pre-Locked-Test Calibration score sidecars and can be frozen without fitting or
+  outcome-dependent selection.
+- **Exact change:** Amendment 9a rollout diagnostics are mandatory-reported as
+  `unavailable`, with reason `frozen_position_decoder_and_all_object_trace_absent`;
+  no orientation, direction-cosine, primary-object-only or other proxy is allowed.
+  Supporting-layer evidence is mandatory-reported as `unavailable`, and therefore
+  `layer_support_passes=false` and the overall confirmatory mechanistic claim can
+  never be positive in this run. The selected frozen layer is still evaluated in
+  full at alpha 0.25, including all three pairing seeds, 1,000 norm-matched random
+  subspaces, matched-donor and off-manifold controls; its descriptive result is not
+  relabelled as multi-layer evidence. The broken-success ledger is
+  mandatory-reported as `unavailable`, with reason
+  `patched_closed_loop_outcome_not_defined`; no open-loop action sign or factual
+  episode outcome may be substituted for a patched success/failure outcome.
+
+  Before either freeze tag moves and before any Locked Test access, create one
+  immutable, content-addressed Calibration activation-reference artifact from the
+  already completed Calibration scoring sidecars. It contains the mean across the
+  eight registered original noise draws for every valid five-step-cadence state at
+  the selected candidate only, plus exact episode/state membership and source-file
+  digests. Its builder verifies the bound-probe candidate, cohort membership,
+  sidecar/raw links, dimensions and full expected membership; it performs no fit,
+  label access, filtering by outcome or model selection. Locked Test off-manifold
+  distances and their natural 95th-percentile threshold must use only this frozen
+  artifact. All available secondary dose-by-difficulty results remain mandatory.
+- **Affected hypotheses/metrics:** The primary paired log-loss estimand, Brier,
+  AUROC, M2-vs-M0 comparison, alarm thresholds, lead-time estimands, condition
+  rankings, fixed alpha, selected-layer causal estimands and analysis order do not
+  change. The overall mechanistic claim is conservatively forced false because its
+  preregistered multi-layer condition is unavailable. Three secondary reports gain
+  explicit unavailable states rather than invented numerical proxies.
+- **Outcome visibility:** Calibration artifacts and the code-only capability
+  failures were visible. No Locked Test rollout, success label, score, prediction,
+  activation, pairing, intervention or causal result existed or was inspected.
+  No additional Calibration rollout or outcome was collected for this amendment.
+- **Bias risk and mitigation:** The change follows from missing measurement
+  definitions and can only weaken the mechanistic conclusion. Exact unavailable
+  reasons are schema-validated, available analyses cannot be omitted, the
+  activation reference is a deterministic materialization of already existing
+  pre-test bytes, and the final freeze/score tags move only after clean-clone tests
+  reproduce its content address and all entry points pass their preflights.
+- **Implementing commit:** Pending; this amendment is committed prospectively
+  before the affected implementation and artifact bytes.

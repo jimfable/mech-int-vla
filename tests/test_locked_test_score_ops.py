@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +20,21 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC is not None and SPEC.loader is not None
 locked_test_score = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(locked_test_score)
+
+
+def test_score_entrypoint_imports_checkout_without_external_pythonpath() -> None:
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "ops" / "locked_test_score.py"), "--help"],
+        cwd=Path("/"),
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--calibration-predictor-bundle" in result.stdout
 
 
 def _source(split: SplitName, *, manifest_sha256: str, ids: tuple[str, ...]):

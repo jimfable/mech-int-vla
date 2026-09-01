@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Mapping
@@ -22,6 +23,14 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+# The runbook invokes this file by absolute path from the locked checkout.
+# Resolve local sources before project imports so no caller PYTHONPATH or
+# editable install can silently select another package tree.
+_SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[1]
+_SOURCE_ROOT = _SCRIPT_REPO_ROOT / "src"
+if str(_SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SOURCE_ROOT))
 
 from mech_int_vla.allocation import (
     audit_rollout_allocation,

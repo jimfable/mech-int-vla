@@ -52,7 +52,15 @@ exists. The authenticated account currently has no instance and a negative balan
 so a human must restore billing and provision a new 1x RTX 5090 before collection.
 The Locked Test supervisor then performs a machine-readable, fail-closed check of
 the exact runtime, repository, offline snapshots, output paths and free disk before
-it loads a model or creates a simulator.
+it loads a model or creates a simulator. The complete protected-data path is now
+implemented: frozen scoring, selected-layer causal patching, 1,000 streaming
+norm-matched random controls per pair, two-dose sensitivity, immutable evidence
+receipts and a final evaluator that recomputes their summaries. A pre-access local
+verification passed the 473-test suite (3 optional-runtime skips), linting,
+compilation and producer-to-evaluator integration without opening any Locked Test
+outcome. Execution remains externally blocked until billing is restored and the
+pinned 1x RTX 5090 environment is provisioned and passes the documented remote
+preflight.
 
 ## Reproducibility contract
 

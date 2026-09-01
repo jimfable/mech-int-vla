@@ -2480,3 +2480,78 @@ that experiments, negative results, decisions, and confidence can be audited.
   metadata (to be included in the implementing commit).
 - **Compute / cost:** Local CPU-only verification and package-cache use; no GPU
   seconds, no simulator episodes and no new Vast charge.
+
+### 2026-09-01 12:15 CEST — LOCKED-READINESS-003: complete path repaired and locally verified
+
+- **Stage:** Locked Test, strictly pre-access
+- **Question:** After choosing conservative unavailable states for measurements
+  that were never frozen, is every remaining mandatory collection, scoring,
+  causal, sensitivity and evaluation step executable and fail-closed before the
+  protected run begins?
+- **Pre-state / commit:** Prospective amendment
+  `35674dd0c37d8b83a9cfb57ac87f6290e6aa36bb`; no Locked Test raw directory,
+  score sidecar, prediction, activation, pairing, intervention, causal receipt or
+  outcome existed or was inspected. The unrelated local
+  `mein_verständnis.md` remained excluded without reading or modification.
+- **Method:** Materialized the selected-layer natural-activation reference solely
+  from the existing 160-episode Calibration rescore cohort; required exact raw,
+  sidecar, BoundProbe, feature-reference, row-order, candidate-width and source
+  hash links; averaged all eight preregistered factual draws in float64; froze its
+  natural leave-self-out five-neighbor distance distribution. Implemented a
+  separate content-addressed causal producer and sensitivity producer, then made
+  the final evaluator reload every pair-evidence file and recompute summaries.
+  Exercised tampering, interrupted/resumed random-control chunks, insufficient
+  donor availability, zero-yaw ratios, empty difficulty cells and the exact
+  conservative unavailable markers. Rebuilt the freeze with the new artifact
+  bindings and ran the complete isolated Python 3.13 suite plus Ruff and byte-diff
+  checks.
+- **Inputs and controls:** Frozen Locked manifest `1fd8c818…`; selected probe
+  `early_expert_t1_0`; BoundProbe `e94269a1…`; Calibration score allocation
+  `89dfae2f…`; feature reference `4441c760…`; activation reference
+  `cb210e825…` (9,455 states × 720 dimensions, 160 episodes); metadata
+  `b7662e62…`; arrays `574bad7f…`; natural-distance p95
+  `3.890758912438606`; selected alpha 0.25; three pairing seeds; 20 registered
+  slots per seed; 1,000 norm-matched random two-dimensional subspaces per valid
+  pair. No labels, fitting, model selection or new Calibration collection entered
+  the activation-reference build.
+- **Results:**
+  - The activation-reference artifact is standalone, content-addressed and bound
+    by both file hashes in the canonical Calibration freeze. The updated builder
+    reproduces the freeze byte-for-byte at SHA-256
+    `eb39e6952ad8864c8f9ae88a07f382b0efcbe18fd36a1221b67fe9f59106bed9`;
+    the frozen scoring-source digest remains `9452c066…`.
+  - Causal execution now streams random-subspace shifts in O(d) working memory,
+    checkpoints every 25 controls, validates deterministic replay/noise/queue
+    state, preserves resumable content-addressed evidence and reports fewer than
+    30 eligible confirmatory pairs as inconclusive instead of crashing.
+  - Sensitivity always emits the complete alpha {0.5, 1.0} × eight-cell grid.
+    Cells with no valid pair remain explicit unavailable rows. Position-trace,
+    supporting-layer and patched closed-loop outcome evidence use only the exact
+    prospectively approved unavailable states; no proxy can make the overall
+    mechanistic claim positive.
+  - Producer-to-evaluator integration passed with all 60 evidence slots and
+    1,000 controls per valid pair, including invalid donor slots and empty dose
+    cells. The full repository suite passed: 473 tests, 3 optional-runtime skips
+    and 3 passing subtests. Ruff, `py_compile` and `git diff --check` also passed.
+  - The executable/scientific implementation is commit
+    `1150570b4250278c1c4f492cd2944be0c561a439`. The authenticated external state
+    remains `instances=[]` and balance `-4.275898916619454`; no GPU run was
+    attempted.
+- **Interpretation:** The known code, schema, memory, resume and missing-evidence
+  failure modes are closed locally. This establishes software start-readiness,
+  not a preferred scientific result and not proof of the still-unrun remote CUDA
+  environment. The mandatory remote preflight remains the final fail-closed test.
+- **Confidence:** high for local executable contracts and artifact integrity;
+  moderate for remote runtime readiness until the exact replacement RTX 5090
+  environment exists and passes the machine-readable preflight.
+- **Decision:** The Locked Test remains unopened. After the record commit, move
+  both authorization tags only to the final clean verified commit and validate a
+  no-hardlink clone. Operational execution may begin only after the user restores
+  Vast billing/provisions the replacement instance and the remote preflight is
+  green.
+- **Next step:** Commit this record, run the clean-clone verification from the
+  final tagged commit, then wait for the external Vast prerequisite. Do not
+  provision, collect or evaluate protected data while that prerequisite is
+  absent.
+- **Compute / cost:** Local CPU-only validation and package-cache use; no GPU
+  seconds, simulator episodes, Locked Test reads or new Vast charges.

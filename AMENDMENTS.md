@@ -1071,5 +1071,6 @@ left to environment resolution.
   activation reference is a deterministic materialization of already existing
   pre-test bytes, and the final freeze/score tags move only after clean-clone tests
   reproduce its content address and all entry points pass their preflights.
-- **Implementing commit:** Pending; this amendment is committed prospectively
-  before the affected implementation and artifact bytes.
+- **Implementing commit:** `1150570b4250278c1c4f492cd2944be0c561a439`.
+  The prospective amendment itself was committed first at `35674dd0c37d8b83a9cfb57ac87f6290e6aa36bb`;
+  this record-only update changes no executable or scientific bytes.

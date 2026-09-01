@@ -2555,3 +2555,39 @@ that experiments, negative results, decisions, and confidence can be audited.
   absent.
 - **Compute / cost:** Local CPU-only validation and package-cache use; no GPU
   seconds, simulator episodes, Locked Test reads or new Vast charges.
+
+### 2026-09-01 12:20 CEST — LOCKED-READINESS-004: final no-hardlink clone gate passed
+
+- **Stage:** Locked Test, strictly pre-access; reproducibility gate
+- **Question:** Does the committed start-ready tree work without files or Python
+  imports leaking from the developer checkout?
+- **Pre-state / commit:** Record commit
+  `83f72a611077e72cb0a6add281eba7565d36963e`, with both local authorization
+  tags temporarily moved to that exact tree for validation.
+- **Method:** Cloned `main` with `--no-hardlinks` into a fresh directory, created
+  a separate Python 3.13 virtual environment, installed the clone as a package,
+  ran the complete suite, then invoked all seven operational scripts by absolute
+  path from outside the repository with no caller `PYTHONPATH`. Loaded the real
+  activation reference through its strict public loader and independently checked
+  the freeze, metadata and arrays SHA-256 values, tag targets and Git cleanliness.
+  The package builder's untracked temporary `build/` directory was moved outside
+  the clone before the final cleanliness assertion; no repository byte was
+  changed.
+- **Results:** The clone passed all 473 tests with 3 optional-runtime skips and 3
+  passing subtests. Supervisor, cell worker, scorer, postscore gate, causal/
+  sensitivity producer, evaluator and activation-reference builder all parsed
+  `--help` from the external working directory. The strict loader accepted the
+  `(9455, 720)` activation matrix and p95 `3.890758912438606`. Freeze
+  `eb39e695…`, metadata `b7662e62…` and arrays `574bad7f…` matched exactly; the
+  tested clone was Git-clean.
+- **Interpretation:** The repaired path is self-contained at the repository and
+  artifact level. Remaining uncertainty is exclusively the unavailable remote
+  RTX 5090 runtime, which the mandatory preflight is designed to test before any
+  protected model/simulator execution.
+- **Confidence:** high for repository reproducibility and local start-readiness.
+- **Decision:** Record this result without changing executable/scientific bytes,
+  move both authorization tags to the resulting final record commit and push
+  `main` plus the two updated tags. Keep the Locked Test unopened until billing,
+  provisioning and remote preflight are green.
+- **Compute / cost:** Local CPU-only clean-clone verification; no GPU seconds,
+  simulator episodes, Locked Test reads or Vast charges.

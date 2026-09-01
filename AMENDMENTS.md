@@ -1010,5 +1010,8 @@ left to environment resolution.
   split binding and label-independent prediction. Both freeze/scoring tags are
   moved only to the final clean, fully tested commit, following the 2026-08-07
   tag-move precedent.
-- **Implementing commit:** pending until the prospective repair and clean-clone
-  verification are complete; filled in immediately after that commit.
+- **Implementing commits:** `6a470be6a51dd573043e3152c0116c910cbe38d5`
+  (repair, freeze expansion and evidence gate) and
+  `278112a1c5621feb80b916bc658abec3e60d3da0` (clean-clone-discovered scorer
+  import bootstrap plus its direct regression test). The following record-only
+  commit fills these hashes without changing executable or scientific bytes.

@@ -2448,9 +2448,12 @@ that experiments, negative results, decisions, and confidence can be audited.
     threshold. No angular/coverage proxy or post-access refit was substituted.
   - Verification: 446 tests collected; 443 passed and 3 optional-runtime tests
     skipped. The new/affected focused suite also passed after import formatting;
-    byte-diff checks and Python compilation passed. The authenticated Vast state
-    is still `instances=[]`, balance `-4.275898916619454` with the negative-
-    balance threshold enabled.
+    byte-diff checks and Python compilation passed. A no-hardlink clean clone at
+    `7a0c6411…` reproduced all three frozen file hashes, ran all five operational
+    CLIs by absolute path with caller `PYTHONPATH` removed, passed the same full
+    suite, and remained Git-clean. Both authorization tags deliberately remained
+    at `50a955c2…`. The authenticated Vast state is still `instances=[]`, balance
+    `-4.275898916619454` with the negative-balance threshold enabled.
 - **Interpretation:** The two earlier operational failure modes are removed from
   Collection and frozen Scoring. The study as a whole is nevertheless not safe
   to open: the prospective gate proves that the already-required causal and

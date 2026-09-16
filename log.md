@@ -2591,3 +2591,61 @@ that experiments, negative results, decisions, and confidence can be audited.
   provisioning and remote preflight are green.
 - **Compute / cost:** Local CPU-only clean-clone verification; no GPU seconds,
   simulator episodes, Locked Test reads or Vast charges.
+
+### 2026-09-16 22:45 CEST — LOCKED-INFRA-001: replacement RTX 5090 provisioned and frozen runtime rebuilt
+
+- **Stage:** Locked Test, infrastructure; protocol deviation recorded before
+  any protected access (runbook §1 assumed the destroyed instance `46677323`).
+- **Question:** Can the exact frozen runtime be rebuilt from scratch on a fresh
+  Vast host so that the machine-readable `--plan-only` preflight passes?
+- **Pre-state / commit:** Instance checkout at `3da5449d…` (== tags
+  `calibration-locked-v1` and `locked-test-score-v1`), clean tree. Account
+  credit $10.72 at start; no instance existed. No Locked Test raw directory,
+  sidecar, prediction or outcome existed or was read.
+- **Method:** Rented 1× RTX 5090 offers with a 120 GB disk and the Vast PyTorch
+  image; wrote `ops/locked_test_bootstrap.sh` (idempotent, every input
+  content-addressed and fail-closed) and `ops/locked_test_overnight.sh`
+  (collection → scoring chain with per-stage wall times for the §5 cost
+  receipt). Rebuilt `/venv/main` as a uv venv with CPython 3.12.13 because the
+  image ships 3.12.14. Pre-installed the 181 exact pins with `uv` (parallel
+  downloads) after serial `pip` stalled, then reran the bootstrap so its own
+  pip/pin checks, LeRobot source gate, asset verification, snapshot resolution
+  and CUDA policy load all executed on the final tree.
+- **Provider incidents (all before any data existed):** three hosts never
+  finished the Docker image pull (JP 33708387/40889260 offers → instances
+  51236943, 51238322; CA 51241034; 15–57 min stuck) and were destroyed empty.
+  Instance 51239246 (US) booted and started the bootstrap; I destroyed it by
+  mistake while "testing" that a restricted API key (`instance_write`) could
+  not destroy — it could. Cost of the incident ≈ $0.30 and ~20 min; no research
+  bytes existed on it. The key was deleted immediately. Lesson recorded in
+  memory: never issue destroy against a live resource to test permissions.
+- **Final host:** instance `51243106`, Netherlands, $0.682/h running,
+  reliability 99.72 %, driver 595.71.05, 128 threads, 97 GB RAM, 120 GB disk.
+  Image `vastai/pytorch:2.11.0-cu130-cuda-13.2-mini-py312-2026-09-08`.
+  Network: PyPI/Fastly single-stream ≈100–170 kB/s from this host, 12 parallel
+  streams ≈16 MB/s; GitHub 3.6 MB/s; Hugging Face CDN 35 MB/s single-stream.
+- **Results (bootstrap self-check, `/workspace/install.log`):**
+  torch wheel `0f68f4ac…2756` and torchvision `0f030a9b…8a98` verified; all 181
+  pins match `environment-gpu.freeze` (PEP 440-normalized; `thop` reports
+  `0.1.1-2209072238` for the frozen `0.1.1.post2209072238`); LeRobot v0.6.0 at
+  `30da8e68…` with source hash `79603648…` verified; 586/586 asset files of
+  `lerobot/libero-assets@0b3ea86…` verified against the tracked manifest and
+  copied into hf-libero's asset directory; policy `31d453f7…` with
+  `model.safetensors` `9a9f6413…` and base VLM `7b375e1b…` resolve offline from
+  `/workspace/hf-cache`; `load-policy --device cuda` passed. `--plan-only`
+  returned `locked_test_plan_validated` with `episodes: 160`,
+  `resume_episodes: 0`, `free_disk_bytes: 112408801280` and an exact
+  `remote_runtime` block (Python 3.12.13 at `/venv/main`, torch 2.11.0+cu130,
+  CUDA 13.0, one `NVIDIA GeForce RTX 5090` cc 12.0, freeze `d738fb67…`). A
+  non-protected `runtime_cli discovery-reset --task-rank 1 --init-id 0` produced
+  a valid EGL-rendered reset in 16.6 s and wrote no artifact.
+- **Interpretation:** The runtime is byte-equivalent to the freeze on every
+  checked dimension. Host driver differs from the original (580.159.03 →
+  595.71.05); the preflight records but does not freeze it, as designed.
+- **Confidence:** high for runtime equivalence (every check is machine-read);
+  the remaining unknown is per-cell wall time on this host.
+- **Decision:** Proceed with runbook §2 (indices 0–2, sequential, once each),
+  then §3/§4 unattended via `ops/locked_test_overnight.sh` in tmux. A laptop
+  launchd guard stops (never destroys) the instance when credit < $1.50.
+- **Compute / cost:** ≈$1.20 spent on setup and failed hosts so far; credit
+  ≈$9.9 at the time of the first cell.

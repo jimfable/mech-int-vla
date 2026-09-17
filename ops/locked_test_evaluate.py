@@ -90,6 +90,14 @@ class LockedTestEvaluationError(RuntimeError):
     """Raised before publishing when any frozen contract is incomplete."""
 
 
+def _plain_mapping(value: Any) -> Any:
+    # Rollout artifacts expose their metadata as read-only mapping proxies;
+    # canonical JSON needs plain dicts (amendment 2026-09-17, second entry).
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def _canonical(value: Any) -> bytes:
     try:
         return json.dumps(
@@ -98,6 +106,7 @@ def _canonical(value: Any) -> bytes:
             separators=(",", ":"),
             ensure_ascii=True,
             allow_nan=False,
+            default=_plain_mapping,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
         raise LockedTestEvaluationError(f"value is not finite canonical JSON: {exc}") from exc

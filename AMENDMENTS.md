@@ -1153,3 +1153,26 @@ left to environment resolution.
   quantity; it is limited to one byte of accepted trailing whitespace. The fix
   is recorded before the rerun, tested, committed and pushed first.
 - **Implementing commit:** `3d6ef070e4c697e752b35f23517841192772cc15`
+
+### 2026-09-17 — Evaluator canonical serializer accepts read-only artifact mappings
+
+- **Prior protocol commit:** `bd96d4ed74c3430c2daf6c596893c23947cc5fb0`.
+- **Technical reason:** The rerun of `ops/locked_test_evaluate.py` (18:43:19Z,
+  repaired loader) aborted one step later, still inside input validation
+  (`_load_raw_inputs`, section-1 provenance comparison of the first raw
+  artifact against the manifest), because `load_rollout_artifact` exposes
+  `metadata` as read-only `mappingproxy` objects and `_canonical` used
+  `json.dumps` without a `default` hook. No metric, interval, table or report
+  byte was produced; stdout was empty.
+- **Exact change:** `_canonical` gains `default=_plain_mapping`, which converts
+  `collections.abc.Mapping` instances to `dict` and raises for anything else;
+  sorting, separators, ASCII and NaN rejection are unchanged, so canonical bytes
+  of every plain JSON value are identical to before. One unit test checks
+  proxy/dict equality and that non-mappings and NaN are still rejected.
+- **Affected hypotheses/metrics:** none.
+- **Outcome visibility:** none. Only the traceback naming the failing
+  serializer was inspected; no evaluation output exists.
+- **Bias risk and mitigation:** serializer robustness only; recorded, tested,
+  committed and pushed before the rerun; the collection/scoring checkout stays
+  at `3da5449d…`.
+- **Implementing commit:** (filled in by the implementing commit)

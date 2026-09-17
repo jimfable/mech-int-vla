@@ -605,3 +605,18 @@ def test_strict_json_accepts_newline_terminated_canonical_lock(tmp_path: Path) -
     real_lock = ROOT / "locks" / "reality_gate_frozen.json"
     loaded, payload = evaluate_ops._strict_json_bytes(real_lock)
     assert payload.endswith(b"\n") and loaded["code_commit"] == "b491dc76641efe3a5c5d7eef6bb87af13d85f10b"
+
+
+def test_canonical_accepts_read_only_mapping_proxies() -> None:
+    # Amendment 2026-09-17 (second entry): artifact metadata arrives as mappingproxy.
+    from types import MappingProxyType
+
+    plain = {"episode": {"split": "locked_test", "cell": 3, "tags": ["a", "b"]}, "n": 1.5}
+    proxied = MappingProxyType(
+        {"episode": MappingProxyType({"split": "locked_test", "cell": 3, "tags": ["a", "b"]}), "n": 1.5}
+    )
+    assert evaluate_ops._canonical(proxied) == evaluate_ops._canonical(plain)
+    with pytest.raises(evaluate_ops.LockedTestEvaluationError, match="canonical"):
+        evaluate_ops._canonical({"x": object()})
+    with pytest.raises(evaluate_ops.LockedTestEvaluationError, match="canonical"):
+        evaluate_ops._canonical({"x": float("nan")})

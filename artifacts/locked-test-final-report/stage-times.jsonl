@@ -1,0 +1,8 @@
+{"stage":"collection","start":"2026-09-16T20:52:56Z","end":"2026-09-17T01:08:35Z","wall_seconds":15339,"exit":0}
+{"stage":"scoring","start":"2026-09-17T01:08:35Z","end":"2026-09-17T15:39:52Z","wall_seconds":52277,"exit":0}
+{"stage":"causal_patching","start":"2026-09-17T15:43:44Z","end":"2026-09-17T15:43:50Z","wall_seconds":6,"exit":1}
+{"stage":"causal_patching","start":"2026-09-17T15:44:21Z","end":"2026-09-17T18:29:55Z","wall_seconds":9934,"exit":0}
+{"stage":"sensitivity","start":"2026-09-17T18:29:55Z","end":"2026-09-17T18:37:39Z","wall_seconds":464,"exit":0}
+{"stage":"evaluate","start":"2026-09-17T18:38:20Z","end":"2026-09-17T18:38:21Z","wall_seconds":1,"exit":1}
+{"stage":"evaluate","start":"2026-09-17T18:43:19Z","end":"2026-09-17T18:43:20Z","wall_seconds":1,"exit":1}
+{"stage":"evaluate","start":"2026-09-17T18:44:54Z","end":"2026-09-17T18:48:32Z","wall_seconds":218,"exit":0}

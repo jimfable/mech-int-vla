@@ -2715,3 +2715,65 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Next:** §5.0 content-binding preflight (CPU), then `causal`, `sensitivity`,
   `cost`, and the single `evaluate` run, in that order. Off-instance backup is
   deferred to §6 at the owner's request.
+
+### 2026-09-17 20:55 CEST — LOCKED-EVAL-001: Locked Test evaluated once; primary claim fails, M2 ≫ M0, causal specificity fails
+
+- **Stage:** Locked Test §5 (causal, sensitivity, cost) and the single §5
+  evaluator run; report tracked at `artifacts/locked-test-final-report/`
+  (`REPORT.md`, `report.json` SHA-256 `f7d51bf8…`, all receipts).
+- **Question:** The preregistered decision table: does M2 (internals) beat M1
+  (privileged state) by ≥ 3 % paired log-loss lift; does it gain ≥ 5 steps of
+  lead time; is the selected-layer patch sign-correct and specific?
+- **Pre-state / commit:** Scoring receipt `86d85ed1…` (LOCKED-SCORING-002);
+  §5.0 preflight passed 15:43Z with the two authorized limitations.
+- **Method:** `causal` (60 pairs, α 0.25, 1,000 norm-matched random 2-D
+  subspaces per valid pair, matched-donor <5° control, Calibration 5-NN
+  off-manifold check; 9,934 s) → `sensitivity` (α {0.5, 1.0} × 8 cells; 464 s)
+  → `cost` (five stages from measured wall times; `evaluation` = the 152 s CPU
+  preflight; charges at $0.682/h) → `evaluate` from a second checkout at
+  `7edc069b…`. Two evaluator loader defects surfaced at input validation
+  (trailing newline in the frozen reality-gate lock; `mappingproxy` metadata
+  from the artifact loader); each was recorded prospectively in AMENDMENTS
+  (2026-09-17, entries 2 and 3), unit-tested, committed and pushed before the
+  rerun. The three attempts produced no stdout, report or metric before the
+  successful one (218 s, exit 0). Report sections are in PREREG §11 order.
+- **Inputs and controls:** manifest `1fd8c818…`, Calibration freeze
+  `eb39e695…`, reality-gate lock `4e0d4d5c…`, causal `5fc67e65…`, sensitivity
+  `e6dee93e…`, cost `b2547d51…`; bootstrap 10,000 × seed 260803, init-ID
+  clusters; no fitting or selection on Locked Test data.
+- **Results:**
+  - §1: 160 artifacts, 158 valid; 2 invalid resets, both in cell 5 (rate 0.10,
+    at the limit, cell valid); all other envelope rates 0.
+  - §2 primary: Δ log loss (M2 − M1) = −0.0024, relative lift **+0.47 %**, 90 %
+    CI [−1.11 %, +0.63 %] → **fails** the ≥ 3 % bar.
+  - §3: AUROC M0 0.667 [0.626, 0.710], M1 0.831 [0.786, 0.876], M2 0.835
+    [0.791, 0.879]; Brier 0.219 / 0.162 / 0.162.
+  - §4: M2 vs M0 lift **+18.8 %**, CI [−0.187, −0.052] on Δ log loss → succeeds.
+  - §5: 60 failures, detection 98.3 % for M1 and M2, median lead 435 vs 422.5
+    steps, paired median difference 0.0 [0, 0] → **fails** the ≥ 5-step bar.
+  - §6: M1/M2 tie in every cell (largest gains in yaw +22.5°/+37.5°, AUROC
+    0.93–0.98); M0 is near chance in iid and camera +5°.
+  - §7 causal: 52/60 valid pairs; sign-correct 48.1 % [35.6 %, 62.2 %]; median
+    off-target ratio 4.03 (bar ≤ 0.25); target effect −1.5e−4 vs random p95
+    1.0e−4; off-manifold rate 0.60; 1/3 seeds positive → sign, specificity,
+    random-control and seed-stability all fail; multi-layer support
+    unavailable → confirmatory claim `unsupported`.
+  - §8 cost: 21.67 GPU-h, $14.81 instance charges over 78,166 s; no
+    budget-gate stop. §9: 9a/9c exact unavailable markers; 9b fails
+    specificity in all 16 dose×cell rows.
+  - §10: neither lift nor specificity → **negative-result publication path**.
+- **Interpretation:** The pre-stated toy expectation held exactly: internals
+  substitute for privileged state (M2 ≈ M1, both ≫ M0), but they add no
+  information beyond it, and the selected probe direction is read-out only —
+  shifting it moves actions less than a random direction of the same norm
+  does (ratio ≈ 4 in the wrong direction), and 60 % of patched states leave
+  the natural activation manifold. The mechanistic hypothesis is not supported
+  on this task/policy at the frozen layer and dose.
+- **Confidence:** high in the numbers (single frozen run, content-addressed
+  inputs, receipts bound by digest); moderate in generality — one task, one
+  policy, one layer, 158 episodes, wide CIs on lead time and sign rate.
+- **Decision:** Publish as a negative result per start.md §12. No further
+  Locked Test analysis. Next: §6 close-out (off-instance backup, stop the
+  instance, tags to the final tooling commit).
+- **Compute / cost:** §5 stages 2.9 GPU-h ≈ $2.0; total run 21.7 GPU-h ≈ $14.8
+  plus ≈ $3 setup/failed hosts; credit ≈ $1.6 at evaluation end.

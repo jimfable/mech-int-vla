@@ -2777,3 +2777,31 @@ that experiments, negative results, decisions, and confidence can be audited.
   instance, tags to the final tooling commit).
 - **Compute / cost:** §5 stages 2.9 GPU-h ≈ $2.0; total run 21.7 GPU-h ≈ $14.8
   plus ≈ $3 setup/failed hosts; credit ≈ $1.6 at evaluation end.
+
+### 2026-09-17 21:05 CEST — LOCKED-CLOSEOUT-001: artifacts secured off-instance, instance stopped, tags moved
+
+- **Stage:** Locked Test §6 close-out.
+- **Method:** rsync over the direct SSH port of every research artifact to
+  `artifacts/locked-test-run-51243106/` (local, excluded from git): raw
+  `locked_test` (160 dirs, 320 files, 12 GB), 158 score sidecars (316 files),
+  feature cohort/predictions/summary, postscore causal + sensitivity evidence
+  (417 JSON + 2,080 NPZ), cost receipt, evaluation report, runstate, all run
+  logs and `install.log`. Every raw `metadata.json`/`trajectory.npz` SHA-256
+  was recomputed locally and compared with the collection receipt
+  `3314fb71…`: 160/160 match. Counts of sidecars and NPZ evidence equal the
+  remote counts. Then verified no `locked_test_*` job was running and issued
+  `vastai stop` (never destroy); the instance reports `exited`/`stopped`.
+- **Results:** Instance 51243106 stopped at 19:02Z with credit $1.61; stopped
+  storage ≈ $0.055/h, so the balance reaches zero in ≈ 29 h unless credit is
+  added — the provider may then expire the instance, which no longer holds
+  anything irreplaceable. Tracked outputs: `artifacts/locked-test-final-report/`
+  (REPORT.md, report.json `f7d51bf8…`, collection/causal/sensitivity/cost
+  receipts, predictions `86d85ed1…`, stage times).
+- **Decision:** Move `calibration-locked-v1` and `locked-test-score-v1` to this
+  final record commit (runbook §6.4; the collection/scoring checkout on the
+  instance stays at `3da5449d…`, the evaluator ran at `7edc069b…`, both are
+  ancestors). Stop the 30-minute monitoring loop. No Month-2 work without a
+  new instruction.
+- **Compute / cost:** whole Locked Test run on 51243106: ≈ 22.3 h running ≈
+  $15.2 plus ≈ $1.7 on setup and three hosts that never booted; credit $10.72
+  + $7.00 → $1.61.

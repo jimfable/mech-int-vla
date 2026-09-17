@@ -7,7 +7,7 @@ Your direct SSH connection (on vast.ai's infrastructure) is:
 ssh -p 45997 root@38.117.87.57 -L 8080:localhost:8080
 Your proxy SSH connection is:
 ssh -p 13106 root@ssh5.vast.ai -L 8080:localhost:8080
-It is one 1 RTX 5090 (Vast instance 51243106 (Netherlands), image vastai/pytorch:2.11.0-cu130-cuda-13.2-mini-py312-2026-09-08) with VRAM 31.8 GB, 120 GB of Disk Storage, 128 CPU threads and 97 GB RAM. The previous instance 46677323 was destroyed by the provider on 2026-08-25 after the balance went negative; its runtime was rebuilt on 51243106 via ops/locked_test_bootstrap.sh.
+It is one 1 RTX 5090 (Vast instance 51243106 (Netherlands), image vastai/pytorch:2.11.0-cu130-cuda-13.2-mini-py312-2026-09-08) with VRAM 31.8 GB, 120 GB of Disk Storage, 128 CPU threads and 97 GB RAM. The previous instance 46677323 was destroyed by the provider on 2026-08-25 after the balance went negative; its runtime was rebuilt on 51243106 via ops/locked_test_bootstrap.sh. Instance 51243106 was STOPPED (disk preserved, not destroyed) on 2026-09-17 21:02 CEST after the Locked Test close-out; all run artifacts are mirrored under artifacts/locked-test-run-51243106/ (local only) and the final report is tracked in artifacts/locked-test-final-report/.
 When you do not need the instance for a longer time (to run), then you may stop the instance. The storage will be preserved, so you can start the instance again later. NEVER DELETE THE INSTANCE.
 
 Follow best practices for research from people like Neel Nanda.

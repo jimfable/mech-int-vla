@@ -2675,3 +2675,19 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision / next:** scoring (§4) started automatically at 01:08:44Z via the
   same chain; the loop monitors it every 30 min. Expected 4–8 h; the laptop
   credit guard stops the instance at < $1.50, and scoring is resumable.
+
+### 2026-09-17 09:00 CEST — LOCKED-SCORING-001: serial scoring rate and approved second worker
+
+- **Stage:** Locked Test §4 scoring, running since 01:08:44Z in tmux `overnight`.
+- **Observation:** 42/160 sidecars at 06:41Z; per-episode publication intervals
+  (min) `4 3 13 13 3 5 9 10 4 6 5 6 11 4 4 3 4 4 4 5 4 4 4 4 4 4 5 13 13 4 10 4 3 11 13 13`:
+  bimodal, ≈4 min for short episodes and ≈13 min for failure-limit episodes,
+  mean ≈6.6 min. No drift, no throttling (SM 2.89 GHz, 49 °C, scorer RSS 45 GB
+  stable, host load ≈10/128). Zero errors, zero staging entries.
+- **Budget:** credit $3.07 at 06:41Z; the $1.50 guard would stop the instance
+  at ≈09:00Z with ≈55/160 scored. Serial completion needs ≈13 h more.
+- **Decision:** Study owner approved the prospective amendment
+  (AMENDMENTS.md 2026-09-17) to add one reverse-walking `--skip-finalize`
+  worker; expected ≈1.7× throughput (Calibration measurement), ≈7 h remaining.
+  The owner also needs to add credit; the guard floor is unchanged.
+- **Outcome blindness:** unchanged; no sidecar contents read.

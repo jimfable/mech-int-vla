@@ -1074,3 +1074,49 @@ left to environment resolution.
 - **Implementing commit:** `1150570b4250278c1c4f492cd2944be0c561a439`.
   The prospective amendment itself was committed first at `35674dd0c37d8b83a9cfb57ac87f6290e6aa36bb`;
   this record-only update changes no executable or scientific bytes.
+
+### 2026-09-17 — Finish Locked Test scoring with a second, reverse-walking worker
+
+- **Prior protocol commit:** `151c76766cb6bb3ee8e8f4dac8f9e3a2a44e8b3f` (record of
+  LOCKED-COLLECTION-001); frozen scoring tooling unchanged at tag
+  `locked-test-score-v1` = `3da5449de35b2034b3c3d0a7ba6c2115cc358c1b`.
+- **Technical reason:** The serial runbook §4 scorer publishes one sidecar every
+  ≈4 min (short episodes) to ≈13 min (episodes at the failure limit), ≈6.6 min on
+  average: 42/160 after 5.5 h, ≈13 h remaining. The account credit ($3.07 at
+  08:41 CEST, $0.682/h) would run out at ≈55/160. The frozen scorer already
+  supports concurrent processes by design: per-episode atomic publication
+  (`.{digest}.publish.lock`, `.{digest}.tmp-*`), resume-validation of every
+  existing sidecar through the normal loader (`score_resume_validated`), a
+  30 s wait-and-validate on a concurrent publication, and `--reverse` /
+  `--skip-finalize`. The Calibration precedent (AMENDMENTS 2026-08-04;
+  log CALIBRATION-SCORING-EQUIVALENCE-001, receipt `68904e52…`) showed that
+  concurrent scoring changes only the four physical cost arrays
+  (`*_cost`: CUDA-event time, wall time, peak allocation) and no scientific
+  array, seed, mask, transformation, intervention, or M0/M1/M2 feature.
+- **Exact change:** Leave the running serial forward worker (runbook §4 command,
+  PID 6055 chain in tmux `overnight`) untouched. Start exactly one additional
+  process with the identical frozen command plus `--reverse --skip-finalize`
+  (shard 0 of 1, manifest order reversed) in tmux `scorer-reverse`, same locked
+  checkout, weights, raw artifacts, probe, predictors, offline environment and
+  score root. Where the two meet, the process arriving second fails closed on
+  the publish guard (expected, as on 2026-08-06); no sidecar is overwritten.
+  If the forward worker is the one that stops, the unchanged §4 command is run
+  once more: it resume-validates every sidecar and performs the single
+  finalization (allocation audit, features, frozen predictions). Finalization
+  runs exactly once, by a non-`--skip-finalize` process. Sidecar assignment
+  follows manifest order only; no label, feature, duration, state count or cost
+  is consulted.
+- **Affected hypotheses/metrics:** none of the scientific features, predictors,
+  estimands or analysis order. §5 cost accounting reports scoring wall time and
+  one-GPU hours as measured for the mixed serial/two-process stage; per-sidecar
+  physical cost fields are descriptive and never enter features.
+- **Outcome visibility:** 42 Locked Test sidecars existed on disk; none was
+  opened, and no success label, score value, feature or prediction was read.
+  Only counts, timestamps, hashes and JSON event kinds were inspected.
+- **Bias risk and mitigation:** The change is scheduling only, chosen for cost,
+  after observing per-episode durations but not outcomes. Mitigation: this
+  prospective entry before launch; deterministic reverse order; unchanged
+  frozen code, inputs and finalizer; fail-closed publication; the
+  `score_resume_validated` pass over every sidecar by the finalizing process.
+- **Approved by:** study owner in chat, 2026-09-17 ("ja, zwei worker").
+- **Implementing commit:** this entry; no executable or scientific bytes change.

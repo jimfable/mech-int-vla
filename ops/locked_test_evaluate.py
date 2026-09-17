@@ -142,7 +142,11 @@ def _strict_json_bytes(path: Path) -> tuple[dict[str, Any], bytes]:
         raise LockedTestEvaluationError(f"invalid JSON input {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise LockedTestEvaluationError(f"{path} must contain one JSON object")
-    if payload != _canonical(value):
+    # Frozen locks written by the repository materializers end in one newline
+    # (e.g. locks/reality_gate_frozen.json, 4e0d4d5c…); the digest below still
+    # binds the actual bytes.  Amendment 2026-09-17.
+    canonical = _canonical(value)
+    if payload not in (canonical, canonical + b"\n"):
         raise LockedTestEvaluationError(f"{path} is not exact canonical JSON")
     return value, payload
 

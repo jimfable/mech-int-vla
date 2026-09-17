@@ -1120,3 +1120,36 @@ left to environment resolution.
   `score_resume_validated` pass over every sidecar by the finalizing process.
 - **Approved by:** study owner in chat, 2026-09-17 ("ja, zwei worker").
 - **Implementing commit:** this entry; no executable or scientific bytes change.
+
+### 2026-09-17 — Evaluator input loader accepts the frozen lock's trailing newline
+
+- **Prior protocol commit:** `2bc0e4c` (LOCKED-SCORING-002 record); tooling at
+  tag `locked-test-score-v1` = `3da5449d…`.
+- **Technical reason:** The single authorized `ops/locked_test_evaluate.py` run
+  (18:38:20Z) aborted at input validation, before reading any prediction,
+  outcome, causal or sensitivity value: `_strict_json_bytes` requires the file
+  bytes to equal `_canonical(value)` exactly, but the tracked, frozen
+  `locks/reality_gate_frozen.json` (SHA-256 `4e0d4d5c…`, 129,099 bytes) is
+  canonical compact-sorted JSON **followed by one newline** — the byte form its
+  own materializer wrote on 2026-08-03 (`18d64941…`). The evaluator's loader
+  was only ever exercised on synthetic inputs (LOCKED-READINESS-003/004), never
+  on that real lock. The digest check binds the actual bytes and is unaffected.
+- **Exact change:** `_strict_json_bytes` additionally accepts a payload equal
+  to `_canonical(value) + b"\n"`; every other check (duplicate keys, non-finite
+  constants, object type, exact SHA-256 of the actual bytes, content-addressed
+  directory naming) is unchanged, and no lock or receipt byte is modified. One
+  unit test covers the newline-terminated canonical form and a non-canonical
+  rejection. The repaired evaluator runs from a second checkout at the
+  implementing commit against the same frozen inputs and receipts; the
+  collection/scoring checkout at `3da5449d…` is untouched. This remains the
+  first and only evaluation attempt that reads outcomes.
+- **Affected hypotheses/metrics:** none; analysis order, estimands, thresholds
+  and receipts are unchanged.
+- **Outcome visibility:** none. The aborted run produced no stdout, no report
+  and no evaluation directory; only the traceback naming the lock file was
+  inspected. Receipts for causal, sensitivity and cost exist but were not
+  opened.
+- **Bias risk and mitigation:** a loader relaxation cannot change any computed
+  quantity; it is limited to one byte of accepted trailing whitespace. The fix
+  is recorded before the rerun, tested, committed and pushed first.
+- **Implementing commit:** (filled in by the implementing commit)

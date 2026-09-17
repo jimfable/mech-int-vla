@@ -582,3 +582,26 @@ def test_producer_receipts_and_evidence_are_evaluator_compatible(tmp_path: Path)
             ),
             tmp_path / "sensitivity.json", SHA, "b" * 64, "c" * 64,
         )
+
+
+def test_strict_json_accepts_newline_terminated_canonical_lock(tmp_path: Path) -> None:
+    # Amendment 2026-09-17: frozen locks end in one newline; the digest still binds bytes.
+    value = {"b": 1, "a": [1.5, "x"]}
+    canonical = evaluate_ops._canonical(value)
+    bare = tmp_path / "bare.json"
+    bare.write_bytes(canonical)
+    terminated = tmp_path / "terminated.json"
+    terminated.write_bytes(canonical + b"\n")
+    for path in (bare, terminated):
+        loaded, payload = evaluate_ops._strict_json_bytes(path)
+        assert loaded == value
+        assert payload == path.read_bytes()
+    assert evaluate_ops._sha256(canonical + b"\n") != evaluate_ops._sha256(canonical)
+    for bad in (canonical + b"\n\n", canonical + b" ", b"\n" + canonical, b'{"b": 1, "a": [1.5, "x"]}\n'):
+        path = tmp_path / "bad.json"
+        path.write_bytes(bad)
+        with pytest.raises(evaluate_ops.LockedTestEvaluationError, match="canonical"):
+            evaluate_ops._strict_json_bytes(path)
+    real_lock = ROOT / "locks" / "reality_gate_frozen.json"
+    loaded, payload = evaluate_ops._strict_json_bytes(real_lock)
+    assert payload.endswith(b"\n") and loaded["code_commit"] == "b491dc76641efe3a5c5d7eef6bb87af13d85f10b"

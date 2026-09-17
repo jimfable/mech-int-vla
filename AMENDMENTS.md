@@ -1152,4 +1152,4 @@ left to environment resolution.
 - **Bias risk and mitigation:** a loader relaxation cannot change any computed
   quantity; it is limited to one byte of accepted trailing whitespace. The fix
   is recorded before the rerun, tested, committed and pushed first.
-- **Implementing commit:** (filled in by the implementing commit)
+- **Implementing commit:** `3d6ef070e4c697e752b35f23517841192772cc15`

@@ -21,7 +21,7 @@ envelope rates 0. **158 valid episodes** enter every estimand.
 | Brier | 0.1616 | 0.1615 |
 | AUROC | 0.8317 | 0.8358 |
 
-Δ log loss (M2 − M1) = **−0.0024**, relative lift **+0.47 %**, 90 % CI **[−1.11 %, +0.63 %]**
+Δ log loss (M2 − M1) = **−0.0024**, relative lift **+0.47 %**, 90 % CI on the lift **[−1.2 %, +2.1 %]** (Δ log loss CI [−0.0111, +0.0063]; corrected 2026-09-17 21:50 CEST — an earlier version misread the absolute interval as percent)
 (20 clusters, 158 episodes). Preregistered bar ≥ 3 % lift: **not met** (`primary_claim_succeeds: false`).
 
 ## 3. Brier / AUROC per model (90 % CI)

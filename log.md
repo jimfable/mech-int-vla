@@ -2745,7 +2745,9 @@ that experiments, negative results, decisions, and confidence can be audited.
   - §1: 160 artifacts, 158 valid; 2 invalid resets, both in cell 5 (rate 0.10,
     at the limit, cell valid); all other envelope rates 0.
   - §2 primary: Δ log loss (M2 − M1) = −0.0024, relative lift **+0.47 %**, 90 %
-    CI [−1.11 %, +0.63 %] → **fails** the ≥ 3 % bar.
+    CI on the lift [−1.2 %, +2.1 %] (Δ log loss CI [−0.0111, +0.0063];
+    corrected 21:50 CEST, an earlier version misread the absolute interval as
+    percent) → **fails** the ≥ 3 % bar by 0.9 pp.
   - §3: AUROC M0 0.667 [0.626, 0.710], M1 0.831 [0.786, 0.876], M2 0.835
     [0.791, 0.879]; Brier 0.219 / 0.162 / 0.162.
   - §4: M2 vs M0 lift **+18.8 %**, CI [−0.187, −0.052] on Δ log loss → succeeds.
@@ -2805,3 +2807,32 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Compute / cost:** whole Locked Test run on 51243106: ≈ 22.3 h running ≈
   $15.2 plus ≈ $1.7 on setup and three hosts that never booted; credit $10.72
   + $7.00 → $1.61.
+
+### 2026-09-17 22:05 CEST — LOCKED-REPORT-001: final scientific report written (LaTeX/PDF)
+
+- **Stage:** write-up of the closed Locked Test; no new analysis.
+- **Method:** Structured per the study owner's MATS/Neel-Nanda materials
+  (executive summary with figures first, 1–3 tiered claims with evidence and
+  stated confidence, non-chronological, boring alternatives addressed, negative
+  result led as a finding, "what would change our mind" with rough odds).
+  Seven figures generated reproducibly by
+  `artifacts/locked-test-final-report/make_figures.py` from `report.json`,
+  `predictions.json` and the causal/sensitivity evidence; every plotted number
+  is asserted against the report before plotting. LaTeX source
+  `artifacts/locked-test-final-report/paper/report.tex` → `report.pdf`
+  (12 pages, A4).
+- **Correction found while plotting:** the primary 90 % interval had been
+  quoted in REPORT.md and LOCKED-EVAL-001 as "[−1.11 %, +0.63 %]"; that is the
+  absolute Δ-log-loss interval [−0.0111, +0.0063] misread as percent. Relative
+  to M1's log loss (0.5197) the lift interval is [−1.2 %, +2.1 %]. The
+  preregistered 3 % bar is still excluded, but by 0.9 percentage points, not
+  by a wide margin. Both files and the report state the corrected numbers.
+- **Figure-derived facts (not in report.json, derived from frozen artifacts):**
+  per-episode paired Δ recomputed from `predictions.json` reproduces the
+  report's model losses to 1e-9 using the primary steps {0,50,100,150,200};
+  42/60 failed episodes have identical first-alarm steps for M1 and M2;
+  3/52 causal pairs exceed their own random 95th percentile (5.8 %, chance
+  level); 31/52 patched states exceed the natural 5-NN threshold 3.89; the
+  derived α = 0.25 dose row fails specificity in all 8 cells (ratios 2.5–21.4).
+- **Decision:** publish the PDF with the repository; the superseded
+  `summary.png` (sign-ambiguous label) is removed in favour of the figures.

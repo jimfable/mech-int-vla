@@ -1175,4 +1175,4 @@ left to environment resolution.
 - **Bias risk and mitigation:** serializer robustness only; recorded, tested,
   committed and pushed before the rerun; the collection/scoring checkout stays
   at `3da5449d…`.
-- **Implementing commit:** (filled in by the implementing commit)
+- **Implementing commit:** `b73b6fa8991fcf0af70d8c5334824a66e28b5719`

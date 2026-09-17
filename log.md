@@ -2691,3 +2691,27 @@ that experiments, negative results, decisions, and confidence can be audited.
   worker; expected ≈1.7× throughput (Calibration measurement), ≈7 h remaining.
   The owner also needs to add credit; the guard floor is unchanged.
 - **Outcome blindness:** unchanged; no sidecar contents read.
+
+### 2026-09-17 17:45 CEST — LOCKED-SCORING-002: scoring and finalization complete
+
+- **Stage:** Locked Test §4 scoring, finished 15:39:52Z (`SCORING_COMPLETE`,
+  chain exit 0). Wall 52,277 s (14.5 h; 01:08:35Z → 15:39:52Z): ≈7.7 h serial
+  (42 sidecars), ≈6.5 h with the amendment's second reverse worker
+  (2026-09-17), ≈25 min finalization.
+- **Results (counts and digests only; no outcome read):** 160 attempted,
+  `invalid_reset_count: 2` under the frozen allocation rule, `sidecar_count:
+  158`; the reverse worker covered all 158 (`score_shard_complete`, exit 0)
+  with no publish-guard collision, and the forward worker resume-validated the
+  55 foreign sidecars (`score_resume_validated`) before finalizing. Receipt
+  `locked_test_score_feature_receipt`: score allocation `db70d712…`, feature
+  cohort `23284dc3…` (provenance `8d71f177…`), prediction receipt `86d85ed1…`,
+  summary `c1c28b5d…`, predictor family histogram gradient boosting,
+  `kill_switch_1_triggered: false`; bound probe `e94269a1…`, feature reference
+  `4441c760…`, predictor bundle `2b41854a…`, predictor metadata `47daa982…`,
+  Calibration freeze `eb39e695…`, manifest `1fd8c818…` all match the freeze.
+- **Cost so far:** credit $10.72 + $7.00 added → $4.1 at scoring end; running
+  rate $0.682/h. Laptop credit guard floor lowered to $0.40 on the owner's
+  instruction (stopped-storage ≈$0.055/h → ≈7 h from a guard stop to zero).
+- **Next:** §5.0 content-binding preflight (CPU), then `causal`, `sensitivity`,
+  `cost`, and the single `evaluate` run, in that order. Off-instance backup is
+  deferred to §6 at the owner's request.

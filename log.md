@@ -2649,3 +2649,29 @@ that experiments, negative results, decisions, and confidence can be audited.
   launchd guard stops (never destroys) the instance when credit < $1.50.
 - **Compute / cost:** ≈$1.20 spent on setup and failed hosts so far; credit
   ≈$9.9 at the time of the first cell.
+
+### 2026-09-17 03:10 CEST — LOCKED-COLLECTION-001: all 160 Locked Test rollouts collected
+
+- **Stage:** Locked Test §3 collection (runbook), unattended via
+  `ops/locked_test_overnight.sh` in tmux on instance 51243106.
+- **Method:** Runbook §2 first: indices 0, 1, 2 launched once each,
+  sequentially (66 s / 68 s / 64 s wall, exit 0), then `--plan-only` reported
+  `resume_episodes: 3`, `missing_episodes: 157`. The full supervisor run then
+  resume-validated those three artifacts and collected the remaining 157.
+- **Results:** 160/160 episode directories under
+  `/workspace/research-artifacts/raw/locked_test`, 12 GB, zero `.tmp-*`
+  staging entries, zero `Traceback`/`RuntimeError`/staging/non-manifest/
+  authority events in the log. Completion receipt
+  `/workspace/runstate/locked-test-complete.json` (55,705 bytes, SHA-256
+  `3314fb71c90f5f5f…`) binds code commit `18d64941…`, tag `prereg-locked-v1`,
+  manifest `1fd8c818…`, lock payload `64524c97…`, failure-event freeze
+  `dd42e46b…` and orientation eligibility `3599dab9…`. Collection wall time
+  15,339 s (4.26 h; 20:52:56Z → 01:08:35Z); ≈96 s per episode including
+  per-cell model load, versus the ~400 s per episode of the Calibration host.
+- **Outcome blindness:** no success label, score, or per-episode outcome was
+  read; only counts, timestamps, hashes and event kinds were inspected.
+- **Cost so far:** credit $10.72 → $6.9 at collection end (≈$2.9 for the
+  4.3 h of collection at $0.682/h, the rest setup and failed hosts).
+- **Decision / next:** scoring (§4) started automatically at 01:08:44Z via the
+  same chain; the loop monitors it every 30 min. Expected 4–8 h; the laptop
+  credit guard stops the instance at < $1.50, and scoring is resumable.

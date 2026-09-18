@@ -2836,3 +2836,27 @@ that experiments, negative results, decisions, and confidence can be audited.
   derived α = 0.25 dose row fails specificity in all 8 cells (ratios 2.5–21.4).
 - **Decision:** publish the PDF with the repository; the superseded
   `summary.png` (sign-ambiguous label) is removed in favour of the figures.
+
+### 2026-09-18 00:20 CEST — LOCKED-REPORT-002: correction — "internals substitute for privileged state" was an overclaim
+
+- **Trigger:** the study owner asked whether the result still shows the probe is
+  usable in reality without simulator ground truth.
+- **Finding:** M2 = M1 + 8 internal columns (predictors.json: 13 / 43 / 51
+  features). M2 ≈ M1 therefore shows that internals add nothing *on top of*
+  privileged state; it does not show that internals could *replace* it. The
+  deployment-relevant monitor "outputs + internals, no simulator state" was
+  never fitted. The decision-table wording "internals replace privileged
+  state, do not exceed it" (start.md §12, row 6) and my report's Claim 2 /
+  subtitle / takeaway repeated that stronger reading. Also noted: M0's
+  object-rotation/shift counterfactuals are simulator re-renders, so even M0
+  is not fully deployment-realistic as built.
+- **Action:** report.tex, REPORT.md corrected (Claim 2 reworded as "full model
+  beats output-only monitor", interpretation and limitations state the untested
+  model explicitly, follow-up (i) = fit M0 + internals on Calibration
+  out-of-fold, then optionally an explicitly post-hoc Locked Test analysis).
+  No number changed. LOCKED-EVAL-001's interpretation sentence "internals
+  substitute for privileged state (M2 ≈ M1, both ≫ M0)" should be read with
+  this correction.
+- **Decision:** no new analysis without the owner's instruction; the
+  Calibration-only out-of-fold fit of M0 + internals is CPU-only and would not
+  touch the Locked Test.

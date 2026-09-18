@@ -21,7 +21,7 @@
 \newenvironment{claimbox}[1]{\par\medskip\noindent\setlength{\fboxsep}{6pt}\setlength{\fboxrule}{0.5pt}\begin{lrbox}{\claimsavebox}\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}\setlength{\parskip}{2pt}\textbf{#1}\par\smallskip}{\end{minipage}\end{lrbox}\fcolorbox{black!45}{claimbg}{\usebox{\claimsavebox}}\par\medskip}
 
 \title{\textbf{Does Internal Geometry Break Before Robot Behavior Does?}\\[4pt]
-\large A preregistered test on SmolVLA/LIBERO: internal activations replace privileged simulator state for failure prediction but do not beat it, and the decodable orientation direction is not causally used}
+\large A preregistered test on SmolVLA/LIBERO: internal activations add nothing to privileged simulator state for failure prediction, and the decodable orientation direction is not causally used}
 \author{Fynn van Rießen\\[2pt]\small Repository: \href{https://github.com/jimfable/mech-int-vla}{github.com/jimfable/mech-int-vla} \quad Report commit: see Appendix~\ref{app:repro}}
 \date{17 September 2026}
 
@@ -39,12 +39,12 @@
 \textbf{Results (Figure~\ref{fig:headline}).}
 \begin{enumerate}
 \item \textbf{The preregistered primary claim fails, and fails cleanly.} \Mt{} beats \Mo{} in paired log loss by $+0.47\%$ (90\% cluster-bootstrap CI $[-1.2\%,\,+2.1\%]$; bar: $\geq 3\%$). The interval excludes the bar, but only by 0.9 percentage points: a 3\% lift is unlikely, a 1--2\% lift is not ruled out.
-\item \textbf{Internals \emph{substitute} for privileged state.} \Mt{} beats the output-only baseline \Mz{} by $18.8\%$ in log loss ($\Delta$ log loss $-0.120$, CI $[-0.187,\,-0.052]$, both ends favourable); AUROC $0.667 \to 0.835$. A model that never sees the simulator state does as well as one that does.
+\item \textbf{Privileged state (with or without internals) beats outputs alone.} \Mt{} beats the output-only baseline \Mz{} by $18.8\%$ in log loss ($\Delta$ log loss $-0.120$, CI $[-0.187,\,-0.052]$, both ends favourable); AUROC $0.667 \to 0.835$. Because \Mt{} contains all of \Mo{}'s state features, this gap is carried by the simulator state; whether internals \emph{alone} could replace that state (a monitor ``outputs + internals'') was not one of the preregistered models and remains untested.
 \item \textbf{The decodable orientation direction is a readout, not a lever.} A linear \emph{probe} can read the book's orientation out of the activations. But when we \emph{edit} the activations along that probe direction (``patching''), the policy's action moves \emph{less} than when we edit along a random direction of the same size (median off-target ratio $4.0$; bar $\leq 0.25$), and in the predicted direction in only $48\%$ of 52 valid cases (CI $[36\%,62\%]$; bar: CI above $50\%$). The same holds at larger edit sizes and in every perturbation condition.
 \item \textbf{No earlier alarm.} At a fixed 10\% episode-level false-positive rate, \Mt{} and \Mo{} detect 98\% of the 60 failures with identical median lead time (paired difference $0$ steps, CI $[0,0]$).
 \end{enumerate}
 
-\textbf{Takeaway.} On this policy and task, everything the internal orientation signal knows about upcoming failure is already in the privileged state, and the direction we can decode is not one the policy acts through. Being able to \emph{read} a variable from a network is not the same as the network \emph{using} it. Per the preregistered decision table this is the ``neither lift nor specificity'' row: publish the negative result, stop the line.
+\textbf{Takeaway.} On this policy and task, the internal orientation signal adds nothing to what the privileged state already says about upcoming failure, and the direction we can decode is not one the policy acts through. Being able to \emph{read} a variable from a network is not the same as the network \emph{using} it. Per the preregistered decision table this is the ``neither lift nor specificity'' row: publish the negative result, stop the line.
 
 \textbf{Confidence.} High that the measured numbers are what this protocol produces (single frozen run; every input content-addressed). Moderate that the conclusion generalises: one policy, one task, one layer, 158 valid episodes. Section~\ref{sec:limits} lists what would change our mind, with rough probabilities.
 
@@ -87,7 +87,7 @@ Model & What it is allowed to see & Concretely (number of features) \\
 \end{tabular}
 \end{center}
 
-The nesting is the point. \Mt{} vs \Mo{} asks whether the internals contain failure-relevant information that \emph{no} non-internal source has. \Mt{} vs \Mz{} asks whether they contain information a deployed monitor could not otherwise get.
+The nesting is the point. \Mt{} vs \Mo{} asks whether the internals contain failure-relevant information that \emph{no} non-internal source has. \Mt{} vs \Mz{} asks how much the full model gains over an output-only monitor. Note what the nesting does \emph{not} contain: a model with internals but without simulator state. Such a monitor is what one would deploy on a real robot; its accuracy is not measured here.
 
 \subsection{Reading a variable out of activations: the probe}
 \label{sec:probe}
@@ -151,8 +151,8 @@ All four claims below were preregistered as tests; the tiers are ours.
 \begin{claimbox}{Claim 1 (systematic, preregistered primary): internal signals do not improve failure prediction over privileged state.}
 Paired log-loss lift \Mt{} vs \Mo{} $= +0.47\%$, 90\% CI $[-1.2\%, +2.1\%]$ ($\Delta$ log loss $-0.0024$, CI $[-0.0111, +0.0063]$), bar $\geq 3\%$. \textbf{Fails.} Evidence: Section~\ref{sec:claim1}.
 \end{claimbox}
-\begin{claimbox}{Claim 2 (systematic, preregistered secondary): internal signals substitute for privileged state.}
-\Mt{} vs \Mz{}: $\Delta$ log loss $-0.120$, CI $[-0.187, -0.052]$; relative lift $18.8\%$. \textbf{Holds.} Section~\ref{sec:claim1}.
+\begin{claimbox}{Claim 2 (systematic, preregistered secondary): the full model beats the output-only monitor.}
+\Mt{} vs \Mz{}: $\Delta$ log loss $-0.120$, CI $[-0.187, -0.052]$; relative lift $18.8\%$. \textbf{Holds}---but since \Mt{} $\supset$ \Mo{}, this measures the value of privileged state plus internals over outputs, not of internals on their own. Section~\ref{sec:claim1}.
 \end{claimbox}
 \begin{claimbox}{Claim 3 (hedged, preregistered): the probe subspace is not a causal lever at the tested layer and doses.}
 Sign-correct $48\%$ [36\%, 62\%]; off-target ratio $4.03$ (bar $\leq 0.25$); 60\% of patched states leave the natural activation manifold. \textbf{Specificity fails at $\alpha \in \{0.25, 0.5, 1.0\}$.} The stronger multi-layer criterion could not be evaluated (Section~\ref{sec:claim3}).
@@ -188,7 +188,7 @@ Median paired lead-time difference \Mt{} $-$ \Mo{} $= 0$ steps, CI $[0,0]$, bar 
 \paragraph{Blinding and single evaluation.} Locked Test labels were never read by a human or by any fitting code before the evaluator ran; the run was monitored by counts and hashes only. Two loader defects (a trailing newline in a frozen lock file; a read-only mapping type) aborted the evaluator at input validation before any metric existed; each was fixed, tested, and recorded as an amendment before the rerun (Appendix~\ref{app:deviations}).
 
 %======================================================================
-\section{Claims 1 and 2: internals substitute for privileged state, and stop there}
+\section{Claims 1 and 2: internals add nothing to privileged state}
 \label{sec:claim1}
 \paragraph{Why this experiment.} The primary comparison isolates the incremental value of internals over \emph{everything} non-internal; the secondary isolates their value over what a deployed monitor could actually see. The four possible outcomes were mapped to consequences in advance (Appendix~\ref{app:prereg}).
 
@@ -236,7 +236,7 @@ Median paired lead-time difference \Mt{} $-$ \Mo{} $= 0$ steps, CI $[0,0]$, bar 
 \label{fig:gap}
 \end{figure}
 
-\paragraph{Interpretation.} On this task the failure-relevant information carried by the orientation probe is a subset of what relative pose and coverage features already encode. That is exactly the ``substitute, not exceed'' row of the decision table. Note what it does \emph{not} say: it does not say internals are useless at deployment---\Mt{} needs no simulator and beats the output-only monitor by a wide margin.
+\paragraph{Interpretation.} On this task the failure-relevant information carried by the orientation probe is a subset of what relative pose and coverage features already encode. The decision table's phrase for this row, ``internals replace privileged state but do not exceed it'', is stronger than what the nested design can show: \Mt{} $\approx$ \Mo{} proves that internals add nothing \emph{on top of} state, not that they could stand \emph{in for} it. The deployment-relevant monitor---outputs plus internals, no simulator---was not among the three preregistered models, so its accuracy is unknown; it is the obvious cheap follow-up (Section~\ref{sec:limits}). Note also that even \Mz{} is not fully deployment-realistic as built: its object-rotation and object-shift counterfactuals are re-rendered by the simulator, which a real robot cannot do; only the brightness transform is a pure image operation.
 
 %======================================================================
 \section{Claim 3: the decodable direction is a readout, not a lever}
@@ -305,9 +305,9 @@ We separate three readings of the negative results and give our rough odds; thes
 \item \textbf{Method insensitive for the causal claim (wrong layer/coordinate, not absence of mechanism): $\sim 40\%$.} The failure is specific: we tested one linear 2-D subspace at one residual location and flow step, with a patch that is smaller than random noise. We would update toward ``mechanism exists'' if patching the VLM-context token or the late expert location, or a non-linear (e.g.\ token-wise) version of the direction, produced a specific, sign-correct effect with the same controls. We would update toward ``no mechanism'' if a probe with much lower MAE at any location still failed specificity.
 \item \textbf{Underpowered: $\sim 15\%$ for the prediction claims; $\sim 25\%$ for the causal sign test.} The primary interval excludes the 3\% bar, but a 1--2\% lift would need roughly four times the episodes to resolve. The causal sign interval ($\pm 13$\,pp) could hide a weak true effect, but the specificity failure does not depend on power.
 \end{itemize}
-Further limits: one policy, one task, 158 episodes; failure labels come from the simulator, not human judgment; the annotated failure \emph{onset} is a deterministic heuristic; the probe is modest (tracks $\sim 15\%$ of a rotation); and the study cannot say anything about SAE-style features or non-linear readouts, which were out of scope by design.
+Further limits: the nested design leaves the most deployment-relevant question open---no model with internals but \emph{without} simulator state was fitted, so ``internals can replace privileged state'' is a hypothesis this study did not test (fitting \Mz{}\,+\,internals on Calibration out-of-fold would take minutes and no GPU; evaluating it on the Locked Test would be a labelled post-hoc analysis). One policy, one task, 158 episodes; failure labels come from the simulator, not human judgment; the annotated failure \emph{onset} is a deterministic heuristic; the probe is modest (tracks $\sim 15\%$ of a rotation); and the study cannot say anything about SAE-style features or non-linear readouts, which were out of scope by design.
 
-\paragraph{What we would do next, if anything.} Not another run of this design. The informative follow-ups are (i) a cross-layer causal sweep with the same controls, cheap now that the pipeline exists ($\approx$\,3 GPU-hours per layer), and (ii) replacing the orientation probe with a probe for the variable the policy actually fails on (contact/grasp), which the per-cell results suggest.
+\paragraph{What we would do next, if anything.} Not another run of this design. The informative follow-ups are (i) the missing model, outputs\,+\,internals without simulator state, first on Calibration out-of-fold and, if promising, as an explicitly post-hoc Locked Test analysis; (ii) a cross-layer causal sweep with the same controls, cheap now that the pipeline exists ($\approx$\,3 GPU-hours per layer); and (iii) replacing the orientation probe with a probe for the variable the policy actually fails on (contact/grasp), which the per-cell results suggest.
 
 %======================================================================
 \section{Reproducibility and cost}

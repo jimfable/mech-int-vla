@@ -32,8 +32,8 @@ envelope rates 0. **158 valid episodes** enter every estimand.
 | M2 | 0.835 [0.791, 0.879] | 0.162 [0.123, 0.204] | 0.517 [0.404, 0.643] |
 
 ## 4. M2 vs M0 (substitution ceiling)
-Δ log loss = **−0.120**, relative lift **+18.8 %**, 90 % CI [−0.187, −0.052] → **succeeds**:
-internals substitute for privileged state far better than the vision baseline.
+Δ log loss = **−0.120**, relative lift **+18.8 %**, 90 % CI [−0.187, −0.052] → **succeeds**.
+Note (added 2026-09-18): M2 ⊃ M1, so this measures privileged state plus internals over outputs; whether internals alone could replace the state ("outputs + internals") was not among the preregistered models and is untested.
 
 ## 5. Lead time at 10 % episode-FPR (Calibration-frozen thresholds M0 0.5407, M1 0.4927, M2 0.5040)
 60 failed episodes; detection rate 98.3 % for both M1 and M2; median lead M1 435 steps,

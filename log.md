@@ -2860,3 +2860,55 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision:** no new analysis without the owner's instruction; the
   Calibration-only out-of-fold fit of M0 + internals is CPU-only and would not
   touch the Locked Test.
+
+### 2026-09-18 00:55 CEST — EXPLORATORY-001 (post-hoc, not preregistered): can internals stand in for privileged state? Calibration only
+
+- **Stage:** exploratory follow-up requested by the study owner after
+  LOCKED-REPORT-002; Calibration split only, Locked Test not touched, labels
+  permitted on Calibration. Script and results:
+  `artifacts/exploratory/internals-only-calibration/{analysis.py,results.json,fig_internals_only.pdf}`.
+- **Question:** The preregistered design never fitted a model with internals
+  but without simulator state. Does such a model approach M1?
+- **Method:** Frozen Calibration activation reference (9,455 states × 720 at
+  `early_expert_t1_0`, mean over 8 draws) aligned to the frozen Calibration
+  feature cohort (M0/M1/M2 matrices, `terminal_failure_label`) by
+  (episode_id, control_step); grouped 5-fold CV by initial state; frozen HGB
+  hyper-parameters for feature-matrix models; logistic regression on the 720
+  standardized activations with C chosen by inner grouped 4-fold CV
+  ({0.001, 0.01, 0.1, 1}; chosen 0.01 in 4 folds, 0.001 in 1); per-episode
+  loss over primary steps {0,50,100,150,200}, each episode weight one; raw
+  out-of-fold probabilities (no Platt step, so log loss is not directly
+  comparable with the frozen 0.433/0.246 numbers; AUROC is); 90 % cluster
+  bootstrap over 20 initial states, 10,000 replicates, seed 260803. Runtime
+  3 min 40 s on the laptop CPU.
+- **Results (AUROC [90 % CI]; log loss [CI]):**
+  | model | AUROC | log loss |
+  |---|---|---|
+  | M0 outputs only (13) | 0.801 [0.698, 0.896] | 0.600 [0.523, 0.680] |
+  | 8 internal M2 columns only | 0.874 [0.830, 0.919] | 0.491 [0.404, 0.585] |
+  | M0 + 8 internal columns (21) | 0.894 [0.826, 0.954] | 0.482 [0.394, 0.579] |
+  | direct probe: logistic on 720 activations | **0.940** [0.883, 0.983] | 0.461 [0.348, 0.581] |
+  | M0 + 720 activations (HGB) | **0.951** [0.902, 0.989] | 0.431 [0.332, 0.540] |
+  | M1 + privileged state (43) | 0.949 [0.914, 0.979] | 0.399 [0.303, 0.504] |
+  | M2 (51) | 0.945 [0.911, 0.978] | 0.399 [0.301, 0.507] |
+  Paired log-loss lifts: direct probe vs M0 +23.2 % [+12.5, +33.1]; M0+act vs
+  M0 +28.1 % [+20.1, +35.7]; M0+act vs M1 −7.9 % [−15.7, +0.2]; direct probe
+  vs M1 −15.3 % [−28.2, −3.7]; M0+M2inc vs M1 −20.7 % [−30.4, −10.7];
+  M2 vs M1 −0.0 % [−1.7, +1.6] (reproduces the preregistered null).
+- **Interpretation:** On Calibration, a linear read-out of the raw 720-dim
+  activation predicts failure about as well as the privileged-state model in
+  ranking terms (AUROC 0.940–0.951 vs 0.949) and within ~8 % in log loss
+  (interval touching zero) when combined with outputs. The eight
+  interpretability-motivated "consistency" features (M2 increment) are much
+  weaker (0.874–0.894): the failure information is in the activation, not in
+  the orientation probe's behaviour. This supports "internals can largely
+  substitute for privileged state" — the reading the preregistered design
+  could not test — while leaving the preregistered conclusion intact
+  (internals add nothing on top of state; the probe direction is not causal).
+- **Caveats:** exploratory; out-of-fold on the split where the probe location
+  and hyper-parameters were chosen (optimistic); 20 clusters → wide intervals;
+  a 720-dim logistic model on 160 episodes risks overfitting despite nested C
+  and grouped CV; no Platt step; the direct probe is a correlate, not a
+  mechanism; Locked Test generalisation unknown (would be a labelled post-hoc
+  analysis). Sim-to-real transfer remains untested.
+- **Compute / cost:** laptop CPU only, 0 GPU-seconds, no Vast charge.

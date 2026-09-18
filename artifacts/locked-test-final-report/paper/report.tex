@@ -18,7 +18,7 @@
 \newcommand{\Mz}{M0}\newcommand{\Mo}{M1}\newcommand{\Mt}{M2}
 \definecolor{claimbg}{RGB}{245,247,250}
 \newsavebox{\claimsavebox}
-\newenvironment{claimbox}[1]{\par\medskip\noindent\begin{lrbox}{\claimsavebox}\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}\setlength{\parskip}{2pt}\textbf{#1}\par\smallskip}{\end{minipage}\end{lrbox}\setlength{\fboxsep}{6pt}\setlength{\fboxrule}{0.5pt}\fcolorbox{black!45}{claimbg}{\usebox{\claimsavebox}}\par\medskip}
+\newenvironment{claimbox}[1]{\par\medskip\noindent\setlength{\fboxsep}{6pt}\setlength{\fboxrule}{0.5pt}\begin{lrbox}{\claimsavebox}\begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}\setlength{\parskip}{2pt}\textbf{#1}\par\smallskip}{\end{minipage}\end{lrbox}\fcolorbox{black!45}{claimbg}{\usebox{\claimsavebox}}\par\medskip}
 
 \title{\textbf{Does Internal Geometry Break Before Robot Behavior Does?}\\[4pt]
 \large A preregistered test on SmolVLA/LIBERO: internal activations replace privileged simulator state for failure prediction but do not beat it, and the decodable orientation direction is not causally used}
@@ -32,7 +32,7 @@
 \section*{Executive summary}
 \addcontentsline{toc}{section}{Executive summary}
 
-\textbf{Question.} A robot policy sometimes fails. Do its \emph{internal activations} tell you that a failure is coming, beyond what you could already know from its \emph{outputs} and from \emph{privileged simulator state}? If yes, mechanistic interpretability buys something on vision-language-action (VLA) models. If no, it does not---at least not in this form.
+\textbf{Question.} A robot \emph{policy}---the neural network that turns camera images, the robot's joint readings and a text instruction into motor commands---sometimes fails at its task. Do the network's \emph{internal activations} (the intermediate vectors it computes on the way to its output) tell you that a failure is coming, beyond what you could already know from the policy's \emph{outputs} and from \emph{privileged simulator state} (the true positions of everything, which a simulator knows but a real robot does not)? If yes, reading the internals of such vision-language-action (VLA) models buys something. If no, it does not---at least not in this form.
 
 \textbf{What we did.} We froze one public policy (SmolVLA fine-tuned on LIBERO), one manipulation task (``pick up the book and place it in the back compartment of the caddy''), and three nested failure predictors: \Mz{} (policy outputs only), \Mo{} (\Mz{} + privileged simulator state), \Mt{} (\Mo{} + internal signals built from a probe for the book's relative orientation). Every threshold, metric, and analysis step was preregistered and hash-locked before the held-out \emph{Locked Test} split (160 episodes, 8 perturbation conditions) was collected. The evaluator ran exactly once. Cost: 21.7 GPU-hours on one RTX~5090.
 
@@ -40,11 +40,11 @@
 \begin{enumerate}
 \item \textbf{The preregistered primary claim fails, and fails cleanly.} \Mt{} beats \Mo{} in paired log loss by $+0.47\%$ (90\% cluster-bootstrap CI $[-1.2\%,\,+2.1\%]$; bar: $\geq 3\%$). The interval excludes the bar, but only by 0.9 percentage points: a 3\% lift is unlikely, a 1--2\% lift is not ruled out.
 \item \textbf{Internals \emph{substitute} for privileged state.} \Mt{} beats the output-only baseline \Mz{} by $18.8\%$ in log loss ($\Delta$ log loss $-0.120$, CI $[-0.187,\,-0.052]$, both ends favourable); AUROC $0.667 \to 0.835$. A model that never sees the simulator state does as well as one that does.
-\item \textbf{The decodable orientation direction is a readout, not a lever.} Patching the probe's 2-D subspace at the selected layer ($\alpha{=}0.25$; also $0.5$, $1.0$) moves the policy's action \emph{less} than a random direction of the same norm (median off-target ratio $4.0$; bar $\leq 0.25$), with the predicted sign in $48\%$ of 52 valid pairs (CI $[36\%,62\%]$; bar: CI above $50\%$). All 16 preregistered dose$\times$condition sensitivity cells fail specificity.
+\item \textbf{The decodable orientation direction is a readout, not a lever.} A linear \emph{probe} can read the book's orientation out of the activations. But when we \emph{edit} the activations along that probe direction (``patching''), the policy's action moves \emph{less} than when we edit along a random direction of the same size (median off-target ratio $4.0$; bar $\leq 0.25$), and in the predicted direction in only $48\%$ of 52 valid cases (CI $[36\%,62\%]$; bar: CI above $50\%$). The same holds at larger edit sizes and in every perturbation condition.
 \item \textbf{No earlier alarm.} At a fixed 10\% episode-level false-positive rate, \Mt{} and \Mo{} detect 98\% of the 60 failures with identical median lead time (paired difference $0$ steps, CI $[0,0]$).
 \end{enumerate}
 
-\textbf{Takeaway.} On this policy and task, everything the internal orientation signal knows about upcoming failure is already in the privileged state, and the direction we can decode is not one the policy acts through. Per the preregistered decision table this is the ``neither lift nor specificity'' row: publish the negative result, stop the line.
+\textbf{Takeaway.} On this policy and task, everything the internal orientation signal knows about upcoming failure is already in the privileged state, and the direction we can decode is not one the policy acts through. Being able to \emph{read} a variable from a network is not the same as the network \emph{using} it. Per the preregistered decision table this is the ``neither lift nor specificity'' row: publish the negative result, stop the line.
 
 \textbf{Confidence.} High that the measured numbers are what this protocol produces (single frozen run; every input content-addressed). Moderate that the conclusion generalises: one policy, one task, one layer, 158 valid episodes. Section~\ref{sec:limits} lists what would change our mind, with rough probabilities.
 
@@ -56,6 +56,80 @@
 \end{figure}
 
 \tableofcontents
+
+%======================================================================
+\section{The setting in plain terms}
+\label{sec:plain}
+This section defines every object the rest of the report uses. Readers who work on VLA models can skip to Section~\ref{sec:why}.
+
+\subsection{The robot and its policy}
+The robot is a simulated 7-joint arm with a gripper in the LIBERO benchmark. Its \textbf{policy} $\pi$ is a neural network with about 450 million parameters (SmolVLA). At every control step $t$ it receives an \emph{observation} $o_t$---two camera images (a fixed ``agent'' view and a wrist camera), the 8 joint/gripper readings, and the text instruction ``pick up the book and place it in the back compartment of the caddy''---and outputs a planned sequence of 50 future motor commands, each a 7-dimensional vector (end-effector translation, rotation, gripper). The robot executes only the first command, observes again, and re-plans. So $\pi: o_t \mapsto (a_t, a_{t+1}, \dots, a_{t+49})$, and the closed loop is $o_{t+1} = \mathrm{sim}(o_t, a_t)$.
+
+Internally the network has two parts. A \emph{vision-language model} encodes images and text into a sequence of vectors. An \emph{action expert}, a smaller transformer, turns those vectors into the 50 commands. The action expert works by \emph{flow matching}: it starts from 50 random Gaussian vectors and refines them in 10 steps into the command sequence, each refinement conditioned on the encoded observation. ``Flow step $t{=}1.0$'' below means the first of those refinement steps.
+
+\subsection{Episodes, success, failure}
+An \textbf{episode} starts from one of 50 fixed initial scene configurations (``initial states'', which differ in where the book and the caddy stand), optionally with a \emph{perturbation} applied (the book rotated, the book shifted, or the camera tilted), and runs for up to 520 control steps. The simulator reports \textbf{success} if the book ends up in the caddy's back compartment; otherwise the episode is a \textbf{failure}. On this task, most failures are not dramatic: the policy stalls or mis-grasps and the clock runs out. For each failed episode a fixed rule also assigns a failure \emph{onset} step (when the grasp was missed, the book dropped, or the book left the reachable workspace), used only for the lead-time analysis.
+
+\subsection{Three kinds of information about a running episode}
+At each sampled step $t$ (every 5 control steps) we compute a feature vector $x_t$, and a classifier $f_m$ predicts the probability $p_m(t) = f_m(x_t)$ that \emph{this episode will end in failure}. The three models differ only in what goes into $x_t$; the classifier family and its hyper-parameters are identical (gradient-boosted decision trees, fitted once on the Calibration split and frozen).
+
+\begin{center}\small
+\begin{tabular}{p{0.12\textwidth}p{0.42\textwidth}p{0.38\textwidth}}
+\toprule
+Model & What it is allowed to see & Concretely (number of features) \\
+\midrule
+\Mz{} & \textbf{Only the policy's outputs.} Nothing about the world beyond what the policy itself computes. This is what a monitor on a real robot could have. & (13) How much the planned commands change when the input is slightly altered---image brightness $\times 0.85$ or $\times 1.15$, the camera yawed $\pm 3^\circ$, the book rotated $\pm 15^\circ$ or shifted a few cm in the simulator and re-rendered; how much the commands vary across 8 random draws of the flow-matching noise; the size and roughness of the planned command sequence. \\
+\addlinespace
+\Mo{} & \Mz{} \textbf{plus the simulator's ground truth.} Exact poses of gripper, book and goal; contact flags; task phase. Also ``coverage'': how close the current state is to states in which Calibration episodes succeeded. A real robot does not have this; it is the strongest \emph{non-internal} information we can give a monitor. & \Mz{} + relative gripper--book and book--goal poses, symmetry-aware relative yaw, gripper opening, contact flags, phase (pre-grasp / grasped / transport / placed), normalised time; median distance to the 5 nearest successful same-phase Calibration states, distance to the nearest state, failure fraction among the 25 nearest. \\
+\addlinespace
+\Mt{} & \Mo{} \textbf{plus readouts from inside the network.} Everything derived from the activations at one chosen location, through the orientation probe of Section~\ref{sec:probe}. Uses no simulator ground truth of its own. & \Mo{} + (8) the probe's decoded orientation and how it moves under the same input alterations as in \Mz{} (does the readout rotate when the book is rotated? does it wobble under brightness or camera changes or across noise draws?); the readout's norm and how unusual it is compared with successful Calibration states; and two ``controllability'' numbers from small test edits inside the probe subspace. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The nesting is the point. \Mt{} vs \Mo{} asks whether the internals contain failure-relevant information that \emph{no} non-internal source has. \Mt{} vs \Mz{} asks whether they contain information a deployed monitor could not otherwise get.
+
+\subsection{Reading a variable out of activations: the probe}
+\label{sec:probe}
+Pick one location inside the network---here the 720-dimensional vector entering the fourth layer of the action expert at the first flow step, averaged over the 50 command positions---and call it $h \in \mathbb{R}^{720}$. A \textbf{linear probe} is a ridge regression from $h$ to a target variable. Our variable is the yaw angle $\theta_{\mathrm{rel}}$ between the gripper and the book. Because the book looks the same rotated by $180^\circ$, the target is the doubled angle on the unit circle,
+\[
+y = \big(\cos 2\theta_{\mathrm{rel}},\; \sin 2\theta_{\mathrm{rel}}\big) \in \mathbb{R}^2, \qquad
+\hat y = W h + b,\quad W \in \mathbb{R}^{2\times 720},
+\]
+fitted by $\min_{W,b} \sum_i \|W h_i + b - y_i\|^2 + \lambda \|W\|_F^2$ on Calibration states and scored by the circular error $|\,\tfrac12\operatorname{atan2}(\hat y) - \theta_{\mathrm{rel}}\,|$. A good probe means the network \emph{represents} orientation in a way a linear map can extract. Five candidate locations were preregistered; the rule for choosing one and the achieved error are in Section~\ref{sec:setup}.
+
+\begin{claimbox}{Key intuition: decodable $\neq$ used}
+A probe finding $\theta_{\mathrm{rel}}$ in $h$ shows only that the information is linearly present. The network might read it through the very direction $W$ spans, through some other direction that is merely correlated with it, or not at all (the information could be a by-product). Telling these apart needs an intervention.
+\end{claimbox}
+
+\subsection{Testing whether the variable is used: patching}
+The two rows of $W$ span a 2-dimensional subspace of $\mathbb{R}^{720}$; let $P$ be the orthogonal projector onto it (rank 2). Take a \emph{recipient} state with activation $h_r$ and a \emph{donor} state $h_d$ that is the same in every matched respect (task phase, contact, gripper opening, positions) but whose book is rotated by $30$--$90^\circ$. Replace the recipient's activation by
+\[
+h_r' \;=\; h_r + \alpha\, P\,(h_d - h_r), \qquad \alpha \in \{0.25,\, 0.5,\, 1.0\},
+\]
+i.e.\ move only the probe coordinates of $h_r$ a fraction $\alpha$ of the way toward the donor's, leave the other 718 directions untouched, and let the network finish computing its command. If the network reads orientation through $P$, the resulting command should change in the direction appropriate for the \emph{donor's} orientation (the ``target'' component), and not much elsewhere (the ``off-target'' components). Three controls make this a fair test:
+\begin{itemize}
+\item \textbf{Random directions.} Repeat the edit with 1\,000 random rank-2 subspaces $Q$ in place of $P$, scaled to the same shift norm. If $P$ is special, its effect must exceed the random distribution (we use its 95th percentile).
+\item \textbf{Matched donor.} Use a donor whose orientation differs by less than $5^\circ$. The edit should then do nothing.
+\item \textbf{Staying on the data manifold.} Measure the mean distance from $h_r'$ to its 5 nearest natural Calibration activations; if it exceeds the 95th percentile of that distance among natural states (3.89), the edit has pushed the network into a region it never sees and the result may be meaningless.
+\end{itemize}
+
+\subsection{How predictions are scored}
+\label{sec:metrics}
+Each episode $e$ has a label $y_e \in \{0,1\}$ ($1$ = failed) and predictions $p_m(t)$ at the \emph{primary} steps $T_e = \{0, 50, 100, 150, 200\} \cap \{\text{steps before the episode ended}\}$. The episode's log loss under model $m$ is
+\[
+\ell^m_e = \frac{1}{|T_e|}\sum_{t \in T_e} -\big[\,y_e \log p_m(t) + (1-y_e)\log(1-p_m(t))\,\big],
+\]
+so every episode carries the same total weight regardless of its length. The \textbf{primary estimand} is the paired mean difference and its relative version,
+\[
+\Delta = \frac{1}{n}\sum_e \big(\ell^{\Mt}_e - \ell^{\Mo}_e\big), \qquad
+\text{lift} = \frac{-\Delta}{\frac{1}{n}\sum_e \ell^{\Mo}_e},
+\]
+with $n = 158$ valid episodes; the preregistered bar was lift $\geq 3\%$. Two secondary scores: the \textbf{Brier score} $\frac{1}{|T_e|}\sum_t (p_m(t) - y_e)^2$ (lower is better), and the \textbf{AUROC}, the probability that a randomly chosen failed episode receives a higher predicted failure probability than a randomly chosen successful one ($0.5$ = chance, $1$ = perfect ranking).
+
+\textbf{Uncertainty.} Episodes that start from the same initial state are not independent (same scene, different perturbations), so all intervals are \emph{cluster bootstraps}: resample the 20 initial states of the Locked Test with replacement, keep all 8 episodes of each drawn state, recompute the statistic, repeat $10\,000$ times, and report the 5th and 95th percentiles (a 90\% interval). This is the honest sample size: 20 clusters, not 158 episodes and certainly not 9\,988 sampled steps.
+
+\textbf{Alarms and lead time.} A model raises an alarm the first time $p_m(t)$ exceeds a threshold at three consecutive samples. The thresholds were set on Calibration so that at most 10\% of \emph{successful} episodes ever alarm. Lead time is the number of control steps between the alarm and the annotated failure onset; we compare the paired lead of \Mt{} and \Mo{} on the failed episodes.
 
 %======================================================================
 \section{Why this question}
@@ -98,16 +172,11 @@ Median paired lead-time difference \Mt{} $-$ \Mo{} $= 0$ steps, CI $[0,0]$, bar 
 
 \paragraph{Splits.} Fifty fixed initial states: 0--9 Discovery (stack reproduction, reality gate), 10--29 Calibration (all fitting and selection), 30--49 Locked Test. Reset seeds are derived from split, init, and cell; nothing crosses splits. Uncertainty is always a cluster bootstrap over the 20 init-state clusters (10\,000 replicates, 90\% percentile intervals, seed 260803), never over frames.
 
-\paragraph{The three predictors.} All three are histogram-gradient-boosting classifiers (learning rate 0.03, 200 trees, 7 leaves, min 20 per leaf; family and hyper-parameters chosen on Calibration by grouped out-of-fold \Mo{} log loss, then frozen), predicting $p(\text{episode fails} \mid \text{state at step } t)$ at $t \in \{0,50,100,150,200\}$; every episode has total sample weight one.
-\begin{itemize}
-\item \textbf{\Mz{} (outputs only, 13 features):} how much the action chunk changes under counterfactual inputs (brightness $\times 0.85/1.15$, camera yaw $\pm 3^\circ$, object yaw $\pm 15^\circ$, planar shifts), spread of actions across 8 flow-noise draws, chunk norm and roughness.
-\item \textbf{\Mo{} (+ privileged state):} relative end-effector/object/goal poses, symmetry-aware yaw, gripper opening, contact flags, task phase, plus \emph{coverage} features---distance to the nearest successful Calibration states in the same phase and the failure fraction among the 25 nearest.
-\item \textbf{\Mt{} (+ internals, 8 features):} how the orientation probe's readout behaves under the same counterfactuals (equivariance error under object rotation, dispersion under brightness/camera/noise), the readout's norm and robust $z$-score against successful Calibration states, and a controllability gain and on/off-target ratio from minimum-norm interventions in the probe subspace. No \Mt{} feature uses simulator ground truth.
-\end{itemize}
+\paragraph{The three predictors.} All three are histogram-gradient-boosting classifiers (learning rate 0.03, 200 trees, 7 leaves, minimum 20 samples per leaf). The family and hyper-parameters were chosen on Calibration by grouped 5-fold out-of-fold \Mo{} log loss over a small preregistered grid (logistic regression with $C \in \{0.01,\dots,100\}$ or boosting), then frozen; a Platt calibrator was fitted on the out-of-fold predictions. What each model sees is defined in Section~\ref{sec:plain}: \Mz{} 13 output-only features, \Mo{} those plus simulator state and coverage, \Mt{} those plus 8 internal features. No \Mt{} feature uses simulator ground truth.
 
-\paragraph{The probe.} Target: $[\cos 2\theta_{\mathrm{rel}}, \sin 2\theta_{\mathrm{rel}}]$ with $\theta_{\mathrm{rel}}$ the end-effector-to-book yaw (order-2 symmetry). Five preregistered candidate locations (VLM residual at layer 12; action-expert residual after layers 3 and 11, at flow steps $t{=}1.0$ and $0.5$). Selection rule: episode-weighted ridge regression, grouped 5-fold by init, circular MAE, lowest mean then preregistered preference within one SE. Selected: \texttt{early\_expert\_t1\_0} (width 720, mean over the 50 action tokens), MAE $0.253$\,rad vs. $0.332$ for a constant predictor and $0.315$ for proprioception alone. The probe is real but modest: it tracks about 15\% of a $15^\circ$ object rotation (median error $12.8^\circ$) on Calibration.
+\paragraph{The probe.} As defined in Section~\ref{sec:probe}. Five preregistered candidate locations (VLM residual at layer 12; action-expert residual after layers 3 and 11, at flow steps $t{=}1.0$ and $0.5$). Selection rule: episode-weighted ridge regression, grouped 5-fold by init, circular MAE, lowest mean then preregistered preference within one SE. Selected: \texttt{early\_expert\_t1\_0} (width 720, mean over the 50 action tokens), MAE $0.253$\,rad vs. $0.332$ for a constant predictor and $0.315$ for proprioception alone. The probe is real but modest: it tracks about 15\% of a $15^\circ$ object rotation (median error $12.8^\circ$) on Calibration.
 
-\paragraph{Causal test.} For a recipient state $h_r$ and a donor $h_d$ from a matched state (same phase and contact, gripper within 1\,cm, positions within 2\,cm, book orientation $30$--$90^\circ$ apart) we patch $h_r' = h_r + \alpha P (h_d - h_r)$ with $P$ the rank-2 projector onto the probe subspace, applied to all 50 action tokens at the selected layer and flow step, then read the policy's first action. Controls per pair: (i) a matched donor whose orientation differs by $<5^\circ$ (should do nothing), (ii) 1\,000 random rank-2 subspaces with the same shift norm, (iii) an off-manifold check---the patched state's mean distance to its 5 nearest natural Calibration activations must stay below the natural 95th percentile (3.89). Sixty pairs (3 outcome-blind seeds $\times$ 20), $\alpha$ frozen at $0.25$ on Calibration (smallest of $\{0.25,0.5,1\}$ meeting the off-manifold cap), $\alpha \in \{0.5, 1.0\}$ as sensitivity.
+\paragraph{Causal test.} The patch and its three controls are defined in Section~\ref{sec:plain}. Donors are matched on phase and contact, gripper opening within 1\,cm, gripper and book positions within 2\,cm, normalised time within 0.10, and book orientation $30$--$90^\circ$ apart; the patch is applied to all 50 command positions at the selected layer and flow step, and the policy's first command is read. Sixty pairs (3 outcome-blind seeds $\times$ 20), $\alpha$ frozen at $0.25$ on Calibration (smallest of $\{0.25,0.5,1\}$ meeting the off-manifold cap), $\alpha \in \{0.5, 1.0\}$ as sensitivity.
 
 \begin{figure}[htbp]
 \centering
@@ -321,6 +390,23 @@ All recorded prospectively in \texttt{AMENDMENTS.md} before the affected step ra
 \item \textbf{Two evaluator loader fixes} (trailing newline in the frozen reality-gate lock; read-only mapping type from the artifact loader): each aborted the evaluator at input validation with no output, was unit-tested and committed before the rerun. The successful run was the first to read any outcome.
 \item \textbf{Pre-access unavailability decisions} (1 September): the 9a rollout position diagnostic and the supporting-layer coefficients were declared unavailable rather than substituted post hoc; the confirmatory multi-layer claim was therefore fixed as unsupported before the test was opened.
 \end{itemize}
+
+\section{Glossary}
+\label{app:gloss}
+\begin{description}[style=nextline,leftmargin=1.5em]
+\item[Policy] The neural network that maps an observation (images, joint readings, instruction) to motor commands. Here: SmolVLA, a vision-language model plus a flow-matching action expert.
+\item[Episode] One attempt at the task from a fixed initial state, up to 520 control steps; ends in success or failure.
+\item[Activation] Any intermediate vector the network computes; we use one 720-dimensional vector at a fixed location.
+\item[Probe] A linear regression from an activation to a variable of interest (here the gripper--book yaw), used to test whether the variable is linearly represented.
+\item[Patching] Editing an activation during the forward pass and observing the change in output; used to test whether a represented variable is actually used.
+\item[Privileged state] The simulator's exact knowledge of all poses and contacts, unavailable to a real robot.
+\item[Counterfactual transformation] Re-rendering the same scene with a small change (brightness, camera yaw, book rotation or shift) and re-running the policy, to measure how sensitive its output is.
+\item[Flow matching / flow step] The action expert refines random noise into commands in 10 steps; flow step $t{=}1.0$ is the first.
+\item[Calibration / Locked Test] The split on which everything is fitted and frozen, and the split that is collected only afterwards and evaluated exactly once.
+\item[Cluster bootstrap] Resampling whole initial states (with all their episodes) to obtain confidence intervals that respect the dependence between episodes.
+\item[Off-target ratio] Size of the output change outside the predicted direction divided by the size along it; a specific intervention has a small ratio.
+\item[Off-manifold] An edited activation that is farther from all natural activations than 95\% of natural activations are from each other.
+\end{description}
 
 \section{How to reproduce}
 \label{app:repro}

@@ -46,7 +46,7 @@
 
 \textbf{Takeaway.} On this policy and task, the internal orientation signal adds nothing to what the privileged state already says about upcoming failure, and the direction we can decode is not one the policy acts through. Being able to \emph{read} a variable from a network is not the same as the network \emph{using} it. Per the preregistered decision table this is the ``neither lift nor specificity'' row: publish the negative result, stop the line.
 
-\textbf{Post-hoc addendum (Section~\ref{sec:explore}).} On the Calibration split, a linear read-out of the raw activation vector, without any simulator state, ranks failures about as well as \Mo{} (AUROC 0.94 vs 0.95). Internals can largely \emph{stand in} for privileged state even though they add nothing \emph{on top} of it; this was not preregistered and is not part of the confirmatory result.
+\textbf{Post-hoc addendum (Section~\ref{sec:explore}).} A monitor built from outputs plus the raw activation vector, with no simulator state, sits between the two: held out on the Locked Test it beats the output-only monitor by $12\%$ in log loss (CI $[+5\%, +18\%]$) and falls $7\%$ short of the privileged-state model (CI $[-19\%, +4\%]$). Internals partly \emph{stand in} for privileged state even though they add nothing \emph{on top} of it. Not preregistered; not part of the confirmatory result.
 
 \textbf{Confidence.} High that the measured numbers are what this protocol produces (single frozen run; every input content-addressed). Moderate that the conclusion generalises: one policy, one task, one layer, 158 valid episodes. Section~\ref{sec:limits} lists what would change our mind, with rough probabilities.
 
@@ -331,7 +331,36 @@ Direct probe: logistic regression on the 720 activations & \textbf{0.940} [0.883
 
 \paragraph{Result.} A logistic regression on the raw 720-dimensional activation vector (regularisation chosen by inner grouped cross-validation) ranks failures about as well as \Mo{} (AUROC 0.940 vs 0.949); combined with the output features it matches \Mo{} on AUROC (0.951) and comes within 8\% in log loss (paired lift $-7.9\%$, CI $[-15.7\%, +0.2\%]$). Against the output-only monitor the gain is large and clear (log-loss lift $+28\%$, CI $[+20\%, +36\%]$). The eight interpretability-motivated features of \Mt{}---which describe how the orientation probe \emph{behaves}---are much weaker on their own (AUROC 0.874--0.894): the failure information is in the activation, not in the probe's consistency. Re-fitting \Mt{} vs \Mo{} here reproduces the preregistered null ($-0.0\%$, CI $[-1.7\%, +1.6\%]$).
 
-\paragraph{What this changes and what it does not.} It supports the reading ``internals can largely substitute for privileged state'' that the nested design could not test, and it says the substitution works through the raw representation rather than through the geometric features we designed. It does not change the preregistered conclusions: internals still add nothing on top of state, and the probe direction is still not causal. Caveats: post-hoc; evaluated on the split where the probe location and hyper-parameters were chosen (optimistic); 20 clusters; a 720-dimensional linear model on 160 episodes can overfit despite nested regularisation; the direct probe is a correlate, not a mechanism; performance on the Locked Test and under real-robot distribution shift is unknown.
+\paragraph{Held out: the same models on the Locked Test.} Fitting every model on all 160 Calibration episodes and applying it frozen to the 158 valid Locked Test episodes (labelled post-hoc analysis; Figure~\ref{fig:explore_lt}, Table~\ref{tab:explore_lt}) gives a more sober picture. Internals without simulator state recover roughly half to two thirds of the gap between the output-only monitor and the privileged-state model: episode-level AUROC $0.80 \to 0.89$ against $0.92$ for \Mo{}, log loss $0.64 \to 0.57$ against $0.53$. The gain over outputs alone is clear (paired log-loss lift $+11.7\%$, CI $[+5.5\%, +18.5\%]$); whether internals reach \Mo{} is unresolved (lift $-7.4\%$, CI $[-18.8\%, +3.6\%]$). The Calibration estimate above was optimistic, as expected from a split on which the probe location and hyper-parameters were chosen. The eight interpretability-motivated features add nothing held out (AUROC $0.796$, equal to \Mz{}).
+
+\begin{table}[htbp]
+\centering\small
+\caption{Exploratory, fitted on Calibration and evaluated on the Locked Test (158 episodes, 60 failed, 20 clusters). Episode-level AUROC on the mean primary-step probability (a different definition from Table~\ref{tab:models}; compare only within this table). Re-fit rows use raw probabilities; the top row is the official Platt-calibrated receipt.}
+\label{tab:explore_lt}
+\begin{tabular}{lcc}
+\toprule
+Model (features) & AUROC (episode) & Log loss \\
+\midrule
+Frozen receipt \Mz{} / \Mo{} / \Mt{} & 0.796 / 0.920 / 0.924 & 0.637 / 0.520 / 0.517 \\
+\Mz{} re-fit (13) & 0.800 [0.733, 0.864] & 0.640 [0.552, 0.733] \\
+8 internal columns only & 0.786 [0.707, 0.863] & 0.625 [0.533, 0.722] \\
+\Mz{} + 8 internal columns & 0.796 [0.722, 0.870] & 0.587 [0.497, 0.686] \\
+Direct probe (logistic, 720 activations) & 0.859 [0.802, 0.909] & 0.564 [0.466, 0.665] \\
+\Mz{} + 720 activations (boosting) & \textbf{0.886} [0.840, 0.928] & 0.566 [0.464, 0.672] \\
+\Mo{} re-fit (43) & 0.918 [0.874, 0.956] & 0.527 [0.405, 0.663] \\
+\Mt{} re-fit (51) & 0.922 [0.878, 0.958] & 0.523 [0.404, 0.656] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{../../exploratory/internals-only-locked-test/fig_internals_only_locked.pdf}
+\caption{\textbf{Exploratory: internals without simulator state, Calibration out-of-fold (faded squares) versus Locked Test held out (solid circles).} The held-out numbers are lower for every model; the internal-only models keep a clear margin over \Mz{} but fall short of \Mo{}. Dotted orange line: \Mo{} on the Locked Test.}
+\label{fig:explore_lt}
+\end{figure}
+
+\paragraph{What this changes and what it does not.} It replaces the untested phrase ``internals can replace privileged state'' with a measured one: on this task, a monitor built from outputs plus raw activations, needing no simulator, is clearly better than outputs alone and clearly short of privileged state---a precise middle. It also says the substitution works through the raw representation, not through the geometric features we designed. It does not change the preregistered conclusions: internals still add nothing on top of state, and the probe direction is still not causal. Caveats: post-hoc on outcomes that had already been read; a 720-dimensional linear model trained on 160 episodes; no Platt step in the re-fits; the direct probe is a correlate, not a mechanism; real-robot distribution shift is untested.
 
 %======================================================================
 \section{Limitations and what would change our mind}
@@ -344,7 +373,7 @@ We separate three readings of the negative results and give our rough odds; thes
 \end{itemize}
 Further limits: the nested design leaves the most deployment-relevant question open---no model with internals but \emph{without} simulator state was fitted, so ``internals can replace privileged state'' is a hypothesis this study did not test (fitting \Mz{}\,+\,internals on Calibration out-of-fold would take minutes and no GPU; evaluating it on the Locked Test would be a labelled post-hoc analysis). One policy, one task, 158 episodes; failure labels come from the simulator, not human judgment; the annotated failure \emph{onset} is a deterministic heuristic; the probe is modest (tracks $\sim 15\%$ of a rotation); and the study cannot say anything about SAE-style features or non-linear readouts, which were out of scope by design.
 
-\paragraph{What we would do next, if anything.} Not another run of this design. The informative follow-ups are (i) the missing model, outputs\,+\,internals without simulator state---done on Calibration in Section~\ref{sec:explore}, promising, and still to be tried as an explicitly post-hoc Locked Test analysis; (ii) a cross-layer causal sweep with the same controls, cheap now that the pipeline exists ($\approx$\,3 GPU-hours per layer); and (iii) replacing the orientation probe with a probe for the variable the policy actually fails on (contact/grasp), which the per-cell results suggest.
+\paragraph{What we would do next, if anything.} Not another run of this design. The informative follow-ups are (i) the missing model, outputs\,+\,internals without simulator state---done post hoc in Section~\ref{sec:explore}: a clear gain over outputs, short of privileged state; (ii) a cross-layer causal sweep with the same controls, cheap now that the pipeline exists ($\approx$\,3 GPU-hours per layer); and (iii) replacing the orientation probe with a probe for the variable the policy actually fails on (contact/grasp), which the per-cell results suggest.
 
 %======================================================================
 \section{Reproducibility and cost}

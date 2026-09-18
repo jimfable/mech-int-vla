@@ -2912,3 +2912,49 @@ that experiments, negative results, decisions, and confidence can be audited.
   mechanism; Locked Test generalisation unknown (would be a labelled post-hoc
   analysis). Sim-to-real transfer remains untested.
 - **Compute / cost:** laptop CPU only, 0 GPU-seconds, no Vast charge.
+
+### 2026-09-18 01:30 CEST — EXPLORATORY-002 (post-hoc, not preregistered): internals without simulator state on the Locked Test
+
+- **Stage:** labelled post-hoc analysis requested by the study owner after
+  EXPLORATORY-001; fitted on all 160 Calibration episodes, applied frozen to
+  the 158 valid Locked Test episodes. Not confirmatory. Script/results/figure:
+  `artifacts/exploratory/internals-only-locked-test/`.
+- **Method:** Locked Test activations = float64 mean over the 8 original draws
+  of `original_activation` in each score sidecar (same transformation as the
+  Calibration activation reference); aligned to the Locked Test feature cohort
+  (9,988 rows, M0/M1/M2 matrices, labels). Models as in EXPLORATORY-001;
+  logistic C chosen by grouped 5-fold CV on Calibration (C = 0.01). Metrics:
+  per-episode log loss over primary steps (matches the frozen report to 1e-4
+  for the receipt predictions: 0.6373 / 0.5197 / 0.5173), Brier, and an
+  **episode-level AUROC** on the mean primary-step probability (this differs
+  from the evaluator's AUROC definition — 0.920 here vs 0.831 in the report for
+  M1 — so compare AUROC only within this table). 90 % cluster bootstrap over
+  the 20 Locked Test initial states, 10,000 replicates, seed 260803. Runtime
+  1 min 39 s on the laptop CPU.
+- **Results (Locked Test; AUROC [CI]; log loss [CI]):**
+  | model | AUROC (episode) | log loss |
+  |---|---|---|
+  | frozen receipt M0 / M1 / M2 | 0.796 / 0.920 / 0.924 | 0.637 / 0.520 / 0.517 |
+  | M0 re-fit (13) | 0.800 [0.733, 0.864] | 0.640 [0.552, 0.733] |
+  | 8 internal columns only | 0.786 [0.707, 0.863] | 0.625 [0.533, 0.722] |
+  | M0 + 8 internal columns | 0.796 [0.722, 0.870] | 0.587 [0.497, 0.686] |
+  | direct probe (logistic, 720 act.) | 0.859 [0.802, 0.909] | 0.564 [0.466, 0.665] |
+  | M0 + 720 activations (HGB) | **0.886** [0.840, 0.928] | 0.566 [0.464, 0.672] |
+  | M1 re-fit (43) | 0.918 [0.874, 0.956] | 0.527 [0.405, 0.663] |
+  | M2 re-fit (51) | 0.922 [0.878, 0.958] | 0.523 [0.404, 0.656] |
+  Paired log-loss lifts: M0+act vs M0 **+11.7 % [+5.5, +18.5]**; direct probe
+  vs M0 +11.9 % [+3.4, +20.5]; M0+M2inc vs M0 +8.3 % [−0.1, +16.7]; M0+act vs
+  M1 **−7.4 % [−18.8, +3.6]**; direct probe vs M1 −7.1 % [−18.7, +4.7];
+  M2 vs M1 +0.7 % [−1.1, +2.6] (re-fit) and +0.5 % [−1.2, +2.1] (frozen).
+- **Interpretation:** Held out, internals without simulator state recover
+  roughly half to two thirds of the gap between the output-only monitor and
+  the privileged-state model (AUROC 0.80 → 0.89 vs 0.92; log loss 0.64 → 0.57
+  vs 0.53). The gain over outputs alone is clear (interval excludes zero);
+  whether they reach M1 is unresolved at 90 % (point estimate 7 % worse). The
+  Calibration out-of-fold estimate (EXPLORATORY-001, ≈ M1) was optimistic, as
+  flagged. The eight interpretability-motivated features add nothing on the
+  Locked Test (AUROC 0.796 = M0). Preregistered conclusions unchanged.
+- **Caveats:** post-hoc on already-read outcomes; a 720-dimensional linear
+  model on 160 training episodes; no Platt step in re-fits; AUROC definition
+  differs from the evaluator's; one policy/task; sim-to-real untested.
+- **Compute / cost:** laptop CPU only.

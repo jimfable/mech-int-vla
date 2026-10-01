@@ -143,23 +143,14 @@
   </section>
 
   <h2 id="more-compute">What I would do with more compute</h2>
-  <p>Everything above ran on one rented GPU for about $55 in total. This is what I would run next, in order. Each step decides whether the next one is worth running.</p>
-  <div class="table-wrap">
-    <table class="plan">
-      <thead><tr><th>Step</th><th>What it answers</th><th>Compute</th></tr></thead>
-      <tbody>
-        <tr><td>Positive control for the edit: swap in the partner’s whole vector, at all 10 refinement steps, in 32-bit numbers</td><td>Can this test find an effect at all?</td><td>under 1 GPU hour</td></tr>
-        <tr><td>Sweep where the angle enters the movement: every layer of the action expert and of the vision-language part, every refinement step</td><td>Where does the network use the angle, if anywhere?</td><td>1 to 3 GPU hours</td></tr>
-        <tr><td>Learn the direction the network uses (with distributed alignment search) instead of taking the probe’s, then repeat the edit test with all controls</td><td>Is there a lever, and is it the probe’s direction?</td><td>about 5 GPU hours</td></tr>
-        <tr><td>Probes and monitors for what actually fails, such as contact, grip and progress, against a fair baseline with joint readings and time</td><td>Do the internals carry warnings that cheap signals miss?</td><td>CPU only, on data I already have</td></tr>
-        <tr><td>Run all ten LIBERO-10 tasks briefly and pick one where failures are sudden, like a book slipping out of the gripper</td><td>Is there a task where something can break mid-run?</td><td>about 3 GPU hours</td></tr>
-        <tr><td>Repeat the full study on that task, with a new plan written before the test</td><td>The original question, on failures that can come early</td><td>about 40 GPU hours</td></tr>
-        <tr><td>A planned test of the outputs-plus-internals monitor on fresh runs</td><td>Does Result 2 hold when it is fixed in advance?</td><td>10 to 20 GPU hours</td></tr>
-        <tr><td>Use the monitor to choose new training demonstrations, and compare with choosing at random</td><td>Does reading the internals make data collection cheaper?</td><td>a few fine-tuning runs</td></tr>
-        <tr><td>Repeat the best of this on a larger policy such as π0.5</td><td>Is any of this specific to a small model?</td><td>roughly 100 to 200 GPU hours</td></tr>
-      </tbody>
-    </table>
-  </div>
+  <p>Everything above ran on one rented GPU for about $55. With more, I would:</p>
+  <ul class="limits">
+    <li>Check that the edit test can find anything, by editing the whole vector at all 10 refinement steps in full precision. Then sweep every layer to find where the angle enters the movement.</li>
+    <li>Probe what actually fails, such as the grip and the task’s progress, against a baseline that a real robot also has.</li>
+    <li>Repeat the study on a task where failures are sudden, like a book slipping out of the gripper, and then on a larger policy.</li>
+    <li>Test whether the monitor picks better training data than random choice.</li>
+  </ul>
+  <p>The first two take a few GPU hours. The last two take a few hundred.</p>
 
   <p>The test run took 22 GPU hours on one rented RTX 5090 and cost about $15 of GPU time. The plan, every change to it, the code and the <a href="https://github.com/jimfable/mech-int-vla/blob/main/artifacts/locked-test-final-report/paper/report.pdf">full report</a> are on <a href="https://github.com/jimfable/mech-int-vla">GitHub</a>.</p>
   <p class="colophon">The experiments and this text were done with Claude, based on my notes and ideas.</p>

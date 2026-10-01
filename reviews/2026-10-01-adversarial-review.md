@@ -11,8 +11,10 @@ bleiben, wie sie sind.
 
 ## Budget-Rahmen
 
-- Bisher ausgegeben: etwa **60 $** (Locked Test ≈ 16 $, davon 14,81 $ GPU; Discovery/Calibration ≈ 28 $ GPU + ≈ 15 $
-  Speicher). [Prüfer, Schätzung aus log.md]
+- Bisher ausgegeben: **54,15 $** laut Vast-Abrechnung **[geprüft]**: Instanz 46677323 (Discovery und Calibration,
+  August, inkl. Speicher im gestoppten Zustand) 37,96 $; vier Hosts, die nicht starteten, 0,21 $; Instanz 51243106
+  (Locked Test, September, inkl. Aufbau und Speicher) 15,97 $, davon 14,81 $ reine GPU-Zeit laut Cost-Receipt.
+  Eingezahlt seit August: 54 $ (10 + 10 + 7 + 5 + 15 + 7).
 - Geplant war „niedrige hunderte Euro“. Der größte Teil ist also unverbraucht.
 - Die Vast-Instanz existiert nicht mehr, Guthaben 1,54 $ **[geprüft]**. Neue GPU-Arbeit braucht eine neue Instanz und
   einen Neuaufbau (≈ 2,5 GPU-h ≈ 1,7 $).

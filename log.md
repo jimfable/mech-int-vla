@@ -2995,6 +2995,8 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Other verified points:** M1 already contains the probe's target (`m1_symmetry_eef_object_yaw_sin/cos`), so
   M2 ≈ M1 was close to built in; M0 has no proprioception or time (both sit in M1) and its log loss (0.637) is only
   ≈ 4 % better than a constant predictor (0.664). The Vast instance no longer exists (credit $1.54).
+- **Spend (verified from Vast invoices):** $54.15 total: instance 46677323 $37.96 (Aug, incl. stopped storage),
+  four failed hosts $0.21, instance 51243106 $15.97 (Sep, of which $14.81 GPU per cost receipt).
 - **Reviewer points not yet re-verified:** off-manifold rates are an artifact of the reference set; the stated power
   ("a 3 % effect would most likely have shown") is wrong (≈ 50 % at 3 %, ≈ 80 % at ≈ 4 %); the 25 Aug expectation was
   written after Calibration (postdiction); Locked Test failures are 47 time-outs and 13 workspace exits.

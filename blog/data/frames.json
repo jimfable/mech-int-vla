@@ -1,0 +1,40 @@
+{
+ "success": {
+  "cell": 0,
+  "success": true,
+  "steps": [
+   0,
+   39,
+   78,
+   118,
+   157
+  ]
+ },
+ "failure": {
+  "cell": 4,
+  "success": false,
+  "steps": [
+   0,
+   130,
+   260,
+   390,
+   520
+  ]
+ },
+ "unchanged": {
+  "cell": 0,
+  "success": true
+ },
+ "book-turned": {
+  "cell": 4,
+  "success": false
+ },
+ "book-moved": {
+  "cell": 5,
+  "success": true
+ },
+ "camera-turned": {
+  "cell": 7,
+  "success": true
+ }
+}

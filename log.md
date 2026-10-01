@@ -2958,3 +2958,25 @@ that experiments, negative results, decisions, and confidence can be audited.
   model on 160 training episodes; no Platt step in re-fits; AUROC definition
   differs from the evaluator's; one policy/task; sim-to-real untested.
 - **Compute / cost:** laptop CPU only.
+
+### 2026-10-01 14:30 CEST — BLOG-001: plain-language blog post of the Locked Test result
+
+- **Stage:** write-up only; no new analysis, no model fitted, Locked Test not re-evaluated.
+- **What:** one English blog post for a general ML audience (MATS application), published as a private
+  Artifact (https://claude.ai/artifact/8sDGvfMQatkDQtwVTYycCM), plus a page with three variants each for
+  two figures (https://claude.ai/artifact/K9UHjnDLiSqtW1ceg785ft). Source in `blog/`: `post.html`,
+  `options.html`, `src/extract_data.py` (copies numbers from report.json, the EXPLORATORY-002 results and
+  the causal evidence, and camera frames from the rollout mirror on the external drive),
+  `src/make_figures.py` (9 SVG figures + 6 variants), `src/render.py` (PNG previews).
+- **Content decisions:** same visual system as the steering post (blue = reading internals, orange =
+  editing them). Per-run (episode-level) AUROC is used throughout so Figures 5 and 7 share one scale; the
+  report's per-estimate AUROC is named in the caption. EXPLORATORY-002 (outputs + raw internals, no
+  simulator state) gets its own result section at the study owner's request, disclosed in one sentence as
+  added after the main result. Real camera frames (init 30, cells 0/4/5/7) show the task and a failure.
+- **Review:** three adversarial subagent reviews (part 1, part 2, part 3 + whole post) against report.tex,
+  report.json, PREREG.md and the code. Fixed among others: the internals monitor sees 8 signals, not 720
+  numbers; the two-part pass mark (≥ 3 % and CI excluding 0); "without simulator state" instead of
+  "without the simulator" (M0's counterfactuals are simulator re-renders); unsupported claim that the
+  edits were large enough (dropped); Figure 9 axis is the donor-aligned yaw-command change (verified in
+  `src/mech_int_vla/causal.py`), not an angle.
+- **Open:** user picks figure variants; prose not yet read by the user; post is private until shared.

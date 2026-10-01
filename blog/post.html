@@ -1,0 +1,244 @@
+<title>Looking Inside a Robot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=STIX+Two+Text:ital@0;1&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: one reading column (680px); figures are drawn at exactly this width, so they render 1:1.
+   Same system as the steering post: blue = reading the network's internals, orange = writing into them. */
+:root {
+  --bg: #fcfcfd;
+  --fg: #1b1d21;
+  --muted: #5d636b;
+  --rule: #e2e4e8;
+  --band: #f2f4f7;
+  --plate: #ffffff;
+  --read: #2f6db3;
+  --write: #d4582b;
+  --out: #7d7d7d;
+  --pending: #8a5a12;
+  --pending-bg: #fbf6ec;
+  --pending-rule: #e6d3ad;
+
+  --font-display: "Schibsted Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --font-math: "STIX Two Text", "STIX Two Math", "Cambria Math", "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  --measure: 680px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141619; --fg: #e6e7ea; --muted: #a0a6ae; --rule: #2b2f35; --band: #1c1f23;
+    --plate: #ffffff; --read: #6fa1e0; --write: #dc6232; --out: #a3a3a3;
+    --pending: #e2b765; --pending-bg: #221d14; --pending-rule: #4d3f22;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141619; --fg: #e6e7ea; --muted: #a0a6ae; --rule: #2b2f35; --band: #1c1f23;
+  --plate: #ffffff; --read: #6fa1e0; --write: #dc6232; --out: #a3a3a3;
+  --pending: #e2b765; --pending-bg: #221d14; --pending-rule: #4d3f22;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 1.125rem;
+  line-height: 1.62;
+  padding-inline: clamp(16px, 4vw, 40px);
+  padding-block: 0 4rem;
+  -webkit-font-smoothing: antialiased;
+}
+article { max-width: var(--measure); margin-inline: auto; }
+
+header.post { padding-block: clamp(2rem, 6vw, 3.5rem) 1.4rem; border-bottom: 1px solid var(--rule); margin-bottom: 1.8rem; }
+.kicker { font: 500 .85rem/1.4 var(--font-display); color: var(--muted); margin: 0 0 .9rem; letter-spacing: .02em; }
+h1 { font: 700 clamp(1.8rem, 4.2vw, 2.4rem)/1.12 var(--font-display); letter-spacing: -.02em; margin: 0 0 1rem; text-wrap: balance; }
+.byline { font: 400 .92rem/1.4 var(--font-display); color: var(--muted); margin: 0; }
+h2 { font: 650 1.3rem/1.3 var(--font-display); letter-spacing: -.01em; margin: 2.8rem 0 .7rem; text-wrap: balance; }
+p { margin: 0 0 1.1rem; text-wrap: pretty; }
+a { color: var(--read); text-underline-offset: 2px; text-decoration-thickness: 1px; }
+a:focus-visible { outline: 2px solid var(--read); outline-offset: 3px; border-radius: 2px; }
+code { font-family: var(--font-mono); font-size: .84em; background: var(--band); padding: .08em .3em; border-radius: 3px; }
+.read { color: var(--read); }
+.write { color: var(--write); }
+.out { color: var(--out); }
+
+.summary { background: var(--band); border-radius: 4px; padding: 1.1rem 1.3rem .4rem; margin: 0 0 2rem; }
+.summary h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 .6rem; }
+.summary ul { margin: 0 0 .8rem; padding-left: 1.1rem; }
+.summary li { margin-bottom: .55rem; }
+
+ul.monitors { list-style: none; padding: 0; margin: 0 0 1.2rem; display: grid; gap: .8rem; }
+ul.monitors li { display: grid; grid-template-columns: 7.4rem 1fr; gap: .9rem; }
+ul.monitors li > * { min-width: 0; }
+ul.monitors b { font: 650 1rem/1.62 var(--font-display); }
+
+figure { margin: 1.8rem 0 2.2rem; }
+.plate { background: var(--plate); border: 1px solid var(--rule); border-radius: 4px; overflow-x: auto; }
+.plate img { display: block; width: 100%; height: auto; }
+figcaption { font: 400 .9rem/1.5 var(--font-display); color: var(--muted); margin: .75rem 0 0; padding-inline: 2px; }
+figcaption b { color: var(--fg); font-weight: 600; }
+
+.note {
+  border: 1px dashed var(--pending-rule); background: var(--pending-bg); border-radius: 4px;
+  padding: .8rem 1rem; margin: 2.5rem 0 0; font: 400 .9rem/1.5 var(--font-display); color: var(--fg);
+}
+.note b { color: var(--pending); font-weight: 600; }
+
+ul.limits { padding-left: 1.1rem; margin: 0 0 1.4rem; }
+ul.limits li { margin-bottom: .45rem; }
+.odds { border: 1px solid var(--rule); border-radius: 4px; padding: 1rem 1.2rem .3rem; margin: 0 0 1.8rem; }
+.odds h3 { font: 650 1.02rem/1.3 var(--font-display); margin: 0 0 .3rem; }
+.odds > p { font: 400 .9rem/1.5 var(--font-display); color: var(--muted); margin: 0 0 .6rem; }
+.odds ul { padding-left: 1.1rem; margin: 0 0 .8rem; }
+.odds li { margin-bottom: .55rem; }
+.odds b { font-family: var(--font-display); font-weight: 650; }
+
+@media (max-width: 560px) {
+  body { font-size: 1.05rem; }
+  .plate img { min-width: 540px; }
+  ul.monitors li { grid-template-columns: 1fr; gap: .1rem; }
+}
+</style>
+
+<article>
+  <header class="post">
+    <p class="kicker">Interpretability on a robot policy</p>
+    <h1>Can you see a robot’s failure coming by looking inside it?</h1>
+    <p class="byline">Fynn van Rießen · October 2026</p>
+  </header>
+
+  <section class="summary" aria-labelledby="summary-h">
+    <h2 id="summary-h">In short</h2>
+    <ul>
+      <li>In 158 test runs, a simulated robot arm tried to put a book into a caddy, with small changes to the scene. 60 runs failed.</li>
+      <li>I trained monitors to predict failure early in each run. Once a monitor knew the exact positions of gripper, book and caddy, 8 signals from inside the robot’s network added almost nothing: 0.5% better, where I had set the bar at 3%.</li>
+      <li>Without those positions, which a real robot does not have, the raw internal numbers did help. They closed about two thirds of the gap to the monitor with exact positions. The 8 signals I had designed helped much less.</li>
+      <li>I could read the angle between gripper and book from the internals, but only weakly. Editing the internals along that reading changed the robot’s next planned movement no more than a random edit of the same size.</li>
+    </ul>
+  </section>
+
+  <h2 id="task">The task</h2>
+  <p>The robot is a simulated arm with a two-finger gripper. A neural network called SmolVLA controls it. I used a public version with about 450 million parameters, trained on the LIBERO benchmark that this task comes from. At every step the network looks at two camera images, the arm’s joint readings and the instruction “pick up the book and place it in the back compartment of the caddy”. It then plans the next 50 movements. The arm carries out the first one, and the network looks again.</p>
+  <p>Most of the time this works. In the first stage of the project, 8 of 10 runs without any change succeeded. Figure 1 shows two runs from the same starting scene. In the second run, the book was turned by 37.5° before the start. Everything else in the scene was the same.</p>
+
+  <figure id="fig-runs">
+    <div class="plate"><img src="figures/fig1-runs.svg" alt="Two rows of five camera frames. Top row: the arm grasps the book and places it in the caddy by step 157. Bottom row: the book is turned; the arm reaches for it, never gets a grip, and the run ends at the step limit of 520."></div>
+    <figcaption><b>Figure 1.</b> Two runs, seen through the robot’s front camera. Top: the arm grasps the book and puts it in the caddy after 157 steps. Bottom: with the book turned, the arm reaches for it but never gets a grip. The run stops at the limit of 520 steps and counts as a failure. The second run is longer, so its frames are further apart.</figcaption>
+  </figure>
+
+  <p>Runs like the second one are what I wanted to predict. To get enough of them, I made small changes before each run (Figure 2). I turned the book, moved it, or turned the camera. There were eight conditions, one of them with no change, and each was applied to the same 20 starting scenes. That made 160 test runs. Two had to be dropped because the scene did not reset properly. Of the remaining 158, 60 failed.</p>
+
+  <figure id="fig-changes">
+    <div class="plate"><img src="figures/fig2-changes.svg" alt="Four crops of the same starting scene: unchanged, book turned, book moved, camera turned."></div>
+    <figcaption><b>Figure 2.</b> The kinds of change, shown on one starting scene. The test used four book turns (−37.5°, −22.5°, +22.5° and +37.5°), one shift and two camera turns.</figcaption>
+  </figure>
+
+  <h2 id="monitors">Three monitors</h2>
+  <p>A monitor watches a run while it happens. Every 5 steps it gives a number between 0 and 1: its estimate of the chance that the run will fail. The scores in this post use its estimates at steps 0, 50, 100, 150 and 200. I built three monitors. They are the same kind of model (gradient-boosted decision trees), and all three are trained on the same 160 calibration runs, which are separate from the test runs. They differ only in what they are allowed to see (Figure 3).</p>
+  <ul class="monitors">
+    <li><b class="out">Outputs</b><span>sees only the robot’s own plans. It measures how much the planned movements change when the input changes a little. For example, the image gets brighter, or the book is turned by 15° in a copy of the simulator. It also measures how much the plans vary when the network runs several times on the same input. The idea is that an unsure robot shows it in its plans.</span></li>
+    <li><b>+ Simulator</b><span>also sees what the simulator knows. That includes the exact positions and angles of gripper, book and caddy, how far the gripper is open, whether it touches the book, and how far the task has come. It also sees how similar the current moment is to moments from the calibration runs, and how many of the most similar ones ended in failure. A real robot does not have this. I included it as the strongest monitor that does not look inside the network.</span></li>
+    <li><b class="read">+ Internals</b><span>also sees 8 signals from inside the network. They are computed from one vector of 720 numbers, taken from the action expert, the part of the network that turns what it sees into movements. All 8 come from a linear probe that reads the angle between the gripper and the book. Result 3 below explains the probe.</span></li>
+  </ul>
+  <p>The main question is whether the third monitor beats the second. If it does, the network’s internals hold information about coming failures that even exact knowledge of the scene does not.</p>
+
+  <figure id="fig-monitors">
+    <div class="plate"><img src="figures/fig3-monitors.svg" alt="Three cards. Outputs sees the robot's plans. Plus Simulator adds the exact scene state. Plus Internals adds 8 signals computed from 720 internal numbers. An arrow marks the main comparison between the second and the third."></div>
+    <figcaption><b>Figure 3.</b> Each monitor sees everything the one before it sees, plus one more source. The <a href="https://github.com/jimfable/mech-int-vla/blob/main/artifacts/locked-test-final-report/paper/report.pdf">full report</a> calls them M0, M1 and M2.</figcaption>
+  </figure>
+
+  <h2 id="rules">The rules I set before the test</h2>
+  <p>With enough tries, some version of the internal signals would beat the second monitor by luck. To guard against that, I split the work into three stages, each with its own starting scenes (Figure 4). All building and tuning of the three monitors happened in the first two stages. The test runs were collected only after every setting was frozen. They also use book angles, shifts and camera turns that the earlier stages did not have.</p>
+  <p>Before collecting the test runs, I wrote down the three monitors, the main score, the pass mark of a 3% improvement, and what each possible outcome would mean for the project. I also wrote down what I expected: that the internals would add little on top of the simulator. The main comparison on the test runs was computed once. The plan is in <a href="https://github.com/jimfable/mech-int-vla/blob/main/PREREG.md">PREREG.md</a>, and every later change to it, with date and reason, is in <a href="https://github.com/jimfable/mech-int-vla/blob/main/AMENDMENTS.md">AMENDMENTS.md</a>.</p>
+
+  <figure id="fig-stages">
+    <div class="plate"><img src="figures/fig4-stages.svg" alt="Three blocks in a row: Discovery on 10 scenes, Calibration on 20 scenes, and Test on 20 new scenes. A lock between Calibration and Test marks the freeze."></div>
+    <figcaption><b>Figure 4.</b> The three stages. After the lock, no monitor, signal or setting was changed.</figcaption>
+  </figure>
+
+  <h2 id="result-1">Result 1: the internals add nothing on top of the simulator</h2>
+  <p>To compare monitors I use a score called AUROC. Take one failed run and one successful run at random, and ask how often the monitor gives the failed run the higher failure estimate. A score of 0.5 means guessing, and 1.0 means always right. For each run, I first average the monitor’s estimates (five, or fewer if the run ended before step 200).</p>
+  <p>Every number comes with a 90% range. Runs that start from the same scene are not independent of each other, so I computed the ranges by resampling whole starting scenes, not single runs. The ranges therefore rest on 20 independent units, not 158.</p>
+
+  <figure id="fig-result1">
+    <div class="plate"><img src="figures/fig5-result1.svg" alt="Dot plot of AUROC. Outputs 0.80, plus simulator 0.92, plus internals 0.92, each with a 90 percent range."></div>
+    <figcaption><b>Figure 5.</b> Scores of the three monitors on the 158 test runs, with 90% ranges. The report’s main table scores each estimate separately (0.67, 0.83 and 0.84), with the same pattern. I computed this per-run version after the test, from the same frozen predictions, so that Figures 5 and 7 use one scale.</figcaption>
+  </figure>
+
+  <p>The simulator lifts the score from 0.80 to 0.92. Adding the internals on top changes almost nothing, from 0.920 to 0.924. The two monitors also stay close in each of the eight test conditions (per-estimate AUROC within 0.02).</p>
+  <p>The pass mark I had set in advance uses a different score, log loss. AUROC only checks the order of the estimates. Log loss checks the estimates themselves and punishes confident mistakes; lower is better. The pass mark had two parts: at least 3% lower log loss than the second monitor, and a range that lies entirely on the side of improvement. The third monitor reached 0.5%, with a range from 1.2% worse to 2.1% better (Figure 6). It fails both parts.</p>
+
+  <figure id="fig-passmark">
+    <div class="plate"><img src="figures/fig6-passmark.svg" alt="A number line from minus 2 to plus 4 percent. The measured improvement is plus 0.5 percent, with a range from minus 1.2 to plus 2.1 percent. The pass mark at 3 percent is to the right of the whole range."></div>
+    <figcaption><b>Figure 6.</b> The comparison I had fixed in advance. The blue line is the 90% range for how much the internals improve on the simulator monitor.</figcaption>
+  </figure>
+
+  <p>With 20 starting scenes, a real improvement of 3% would most likely have shown up. An improvement of 1 to 2% cannot be ruled out.</p>
+
+  <h2 id="result-2">Result 2: without simulator state, the internals get about two thirds of the way</h2>
+  <p>A real robot has no simulator that tells it where the book is. My original plan left out the case closest to a real robot: a monitor that sees the outputs and the internals, but no simulator state. I tested it after I had seen the main result, on the same test runs. Like the others, it was trained on the calibration runs. It gets the raw vector of 720 numbers instead of the 8 signals built on the angle probe. I picked this version because it was the best of four on the calibration runs, where it matched the simulator monitor.</p>
+
+  <figure id="fig-result2">
+    <div class="plate"><img src="figures/fig7-result2.svg" alt="Dot plot of AUROC. Outputs 0.80, outputs plus the 8 designed signals 0.80, outputs plus the raw internal numbers 0.89, outputs plus simulator 0.92."></div>
+    <figcaption><b>Figure 7.</b> Monitors with and without simulator state, on the same 158 test runs. For this comparison I re-trained the outputs and simulator monitors alongside the new ones, without the final calibration step. Their AUROCs differ from Figure 5 by 0.004 at most.</figcaption>
+  </figure>
+
+  <p>The new monitor lands between the other two. Outputs alone score 0.80 and outputs plus simulator 0.92, while outputs plus internals score 0.89. That closes 73% of the gap by AUROC and 66% by log loss. Its log loss is 12% lower than with outputs alone (range 5% to 18%) and 7% higher than the simulator monitor’s (range 19% higher to 4% lower). So it clearly beats outputs alone, but whether it falls short of the simulator monitor is not settled.</p>
+  <p>The 8 signals built on the angle probe helped much less. A monitor with those signals instead of the raw vector scored 0.80, the same as outputs alone. Its log loss was 8% lower than with outputs alone, against 12% for the raw vector, and its range just reaches zero. One more catch: even the outputs monitor used the simulator to re-render the turned or moved book for some of its checks.</p>
+
+  <h2 id="result-3">Result 3: reading the angle is not the same as using it</h2>
+  <p>The 8 internal signals all come from one reading. I trained a linear probe on the vector of 720 numbers: a simple formula that predicts the angle between the gripper and the book from those numbers. The probe works, but only roughly. Its average error is 14.5°. Always guessing one fixed angle gives 19°, and a probe on the arm’s joint readings alone gives 18°. When the book turns by 15°, the probe’s reading moves by only about 2°.</p>
+  <p>A working probe shows that the angle can be read from these numbers. It does not show that the network reads it from there. The information could be a by-product that nothing later in the network uses. To test whether the network uses it, you have to change it and watch what happens.</p>
+  <p>So I edited the numbers while the network computed its next movement (Figure 8). I took a moment from one run and a partner moment from another run that matched it closely: the same task stage, gripper and book within 2 cm, but the book turned 30° to 90° differently. Then I moved the first moment’s numbers a quarter of the way toward the partner’s. I did this only along the two directions the probe uses and left the other 718 unchanged. If the network reads the angle from there, the gripper’s planned turn should shift toward the partner’s planned turn.</p>
+  <p>Two checks keep this fair. I repeated the same edit along 1,000 random pairs of directions, with the same size. And I repeated it with a partner whose book angle differed by less than 5°, where nothing should happen.</p>
+
+  <figure id="fig-edit">
+    <div class="plate"><img src="figures/fig8-edit.svg" alt="Sketch of the edit. This moment and a partner moment with the book turned are two points. The edit moves this moment a quarter of the way toward the partner, only along the probe direction. Controls are steps of the same size in random directions."></div>
+    <figcaption><b>Figure 8.</b> The edit, as a sketch. The real vector has 720 numbers, and the probe uses two directions in it, not one. The vector is the input to the fourth layer of the action expert. The action expert builds its plan in 10 refinement steps, starting from random noise; the vector is taken at the first step and averaged over the 50 planned movements.</figcaption>
+  </figure>
+
+  <p>The edit did nothing special (Figure 9). I measured the change in the gripper’s turn command, averaged over the next 10 planned movements. Of 52 usable pairs, it moved toward the partner’s turn in 25. That is 48% (range 36% to 62%), about a coin flip. Only 3 of the 52 edits beat 95% of their own random comparisons, which is what chance gives. The edit also changed the rest of the movement four times as much as the turn, where I had required at most a quarter. The partner with a nearly identical angle gave the same picture, with 54% toward the partner’s turn. Edits of half and the full distance looked the same.</p>
+  <p>Whether the edits were big enough is less clear. Every edit, along the probe or random, changed the turn command by only about a ten-thousandth of its usual spread. I edited only at the first of the 10 refinement steps, so the later steps may have undone part of each edit.</p>
+
+  <figure id="fig-null">
+    <div class="plate"><img src="figures/fig9-null.svg" alt="Histogram of 1,000 random edits. The edit along the probe sits inside the pile, below the line that 95 percent of random edits stay under."></div>
+    <figcaption><b>Figure 9.</b> For each of the 1,000 random directions, the median change in the turn command over the 52 pairs. The edit along the probe sits inside the pile, a little left of its middle. Most random edits also land below zero.</figcaption>
+  </figure>
+
+  <p>So the angle can be read from this layer only weakly, and the network does not act through that reading at the place I tested. It may use the angle in another layer, along a direction my probe did not find, or in a form a linear probe misses. Or the angle in this layer is a by-product.</p>
+
+  <h2 id="warning">No earlier warning</h2>
+  <p>The project’s working title asked whether something inside the network breaks before the robot’s behavior does. If it did, the internals monitor should raise its alarm earlier than the simulator monitor. It did not. I set each monitor’s alarm so that it went off in 1 in 10 successful calibration runs. On the test runs, both monitors caught 59 of the 60 failures. In 42 of the 60 failed runs, both went off at the same step, and the median difference was zero steps. This follows largely from Result 1, since the internals monitor sees everything the simulator monitor sees.</p>
+  <p>Most failures here are also slow. In 48 of the 53 failed calibration runs, my automatic labeller found no single clear mistake such as a dropped book. The arm just never finished. The simulator monitor notices such runs early, so there is little room left to be earlier.</p>
+
+  <h2 id="takeaways">What I take from this</h2>
+  <p>On this robot and this task, the 8 internal signals told me nothing about coming failures that exact simulator state did not already tell me. Without simulator state, the raw internal numbers were useful and got about two thirds of the way. The one internal reading I could interpret, the book’s angle, could be read out only weakly. Editing it at the one place I tried moved the robot no more than a random edit.</p>
+  <p>For monitoring a robot like this, the internal numbers look worth recording. In this study, though, the signals I designed from them helped less than the raw numbers.</p>
+
+  <h2 id="limits">Limits</h2>
+  <ul class="limits">
+    <li>One robot network, one task, and 158 test runs from 20 starting scenes.</li>
+    <li>The edits were tested at one layer and at the first of 10 refinement steps. The network may use the angle somewhere else, and later steps may undo an edit.</li>
+    <li>My plan also required the edit to work at two of three layers. I could not check that, because I had saved the probe for only one layer.</li>
+    <li>The probe is linear and rough. A probe for something else, such as whether the gripper holds the book, might behave differently.</li>
+    <li>The outputs-only monitor is less realistic than it sounds. Some of its checks turn the book in a copy of the simulator, which a real robot cannot do.</li>
+    <li>The model type and settings of all monitors were chosen by the second monitor’s score on the calibration runs. That could favor it slightly.</li>
+    <li>The outputs-plus-internals monitor was added after the main run. It is also a model with 720 inputs trained on 160 runs, which can be fragile.</li>
+  </ul>
+
+  <section class="odds" aria-labelledby="odds-h">
+    <h3 id="odds-h">What would change my mind</h3>
+    <p>These are my rough guesses, not measurements.</p>
+    <ul>
+      <li><b>About 75%</b> that signals like my 8 add nothing on top of the simulator for this robot and task. I never tried the raw 720 numbers on top of it. A different internal signal, for example about the grip, that beats the simulator monitor by 3% under the same rules would change my mind.</li>
+      <li><b>About 40%</b> that the edit failed because I edited the wrong place, not because the angle is unused. A clean, specific effect at another layer would change my mind.</li>
+      <li><b>About 15%</b> that the study was too small to see a real effect on the monitors, and <b>about 25%</b> for the direction test of the edit.</li>
+    </ul>
+  </section>
+
+  <p>The test run took 22 GPU hours on one rented RTX 5090 and cost about $15 of GPU time. The plan, every change to it, the code and the <a href="https://github.com/jimfable/mech-int-vla/blob/main/artifacts/locked-test-final-report/paper/report.pdf">full report</a> are on <a href="https://github.com/jimfable/mech-int-vla">GitHub</a>.</p>
+</article>

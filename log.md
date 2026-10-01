@@ -3003,3 +3003,17 @@ that experiments, negative results, decisions, and confidence can be audited.
 - **Decision / next steps:** correct report and blog first (no cost). Then CPU analyses on Calibration data
   (does the policy use orientation at all; deployable M0⁺ and M1 + raw activations; probes for contact/phase), then
   one GPU session starting with a patching positive control. Ranked list with costs in the review file.
+
+### 2026-10-01 18:45 CEST — BLOG-002: blog corrected after REVIEW-001; two sections added
+
+- **Verified before writing:** patch size on the 52 valid Locked Test pairs, computed from the frozen probe
+  coefficients and the stored activations: median shift norm 0.096 vs activation norm 39.6 (0.24 %); for half of the
+  720 elements the shift is below half a bf16 rounding step. The 25 Aug expectation postdates the Calibration
+  analysis (4–7 Aug).
+- **Changed in the post:** Result 3 now says the edit test was too weak to show use (bf16 rounding, one of 10 steps,
+  no positive control), with matching changes to the summary, takeaways, Limits and "What would change my mind";
+  power sentence corrected (reliable only from ≈ 4 %, a 3 % effect passes about half the time); the expectation is
+  dated "after the calibration runs". New sections "Why this matters" (deployment monitoring, choosing training data,
+  audits) and "What I would do with more compute" (ordered plan with GPU-hour estimates from measured unit costs).
+- **Not changed:** the report (report.tex) still states Claim 3 as "readout, not a lever"; a correction addendum is
+  pending the owner's decision.

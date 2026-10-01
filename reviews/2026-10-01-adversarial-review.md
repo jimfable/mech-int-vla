@@ -29,8 +29,10 @@ bleiben, wie sie sind.
 - Das Netz rechnet an der Eingriffsstelle in bf16 **[geprüft]**: 100 % der gespeicherten Aktivierungen haben null in
   den unteren 16 Bit (Kontrolle: Simulatordaten 0 %). Die Verschiebung wird vor dem Addieren in bf16 umgewandelt
   (`src/mech_int_vla/instrumentation.py:731`) **[geprüft]**.
-- Die Verschiebung ist winzig: Norm ≈ 0,10 bei einer Aktivierungsnorm von ≈ 39, also ≈ 0,004 pro Element. Das liegt
-  in der Größenordnung eines halben bf16-Rundungsschritts. [Prüfer; Aktivierungsnorm 39 geprüft]
+- Die Verschiebung ist winzig **[geprüft, 52 Paare, aus Probe-Koeffizienten und gespeicherten Aktivierungen]**:
+  Median-Norm 0,096 bei einer Aktivierungsnorm von 39,6 (0,24 %). Pro Element median 0,0025 gegen einen halben
+  bf16-Rundungsschritt von median 0,0020; bei der Hälfte der 720 Elemente ist die Verschiebung kleiner als der halbe
+  Rundungsschritt und verschwindet beim Addieren.
 - Probe-Eingriff und Zufallsrichtungen bewegen die Aktion gleich stark (Median 5,4·10⁻⁴ gegen 5,2·10⁻⁴) und
   korrelieren pro Paar mit 0,72 **[geprüft]**. Das spricht für eine generische Reaktion auf jede kleine Störung,
   nicht für etwas Spezifisches.
@@ -76,8 +78,9 @@ erreichen 0,95. Die Aufgabe war nach eigener Regel fast „zu leicht“. [Prüfe
 
 ### Klein
 
-- Die „Vorhersage“ vom 25. August (M2 ≈ M1 ≫ M0) wurde nach den Calibration-Ergebnissen geschrieben, ist also eine
-  Postdiktion. Der Blog-Satz „I also wrote down what I expected“ sollte das sagen. [Prüfer]
+- Die „Vorhersage“ vom 25. August (M2 ≈ M1 ≫ M0) wurde nach den Calibration-Ergebnissen geschrieben (Calibration-
+  Analyse 4.–7. August; das Amendment nennt die Validierung „against the Calibration pattern“), ist also eine
+  Postdiktion **[geprüft]**. Im Blog korrigiert.
 - Mehrere kleinere Fehler im Bericht (AUROC-Definitionen vermischt, „first command is read“ statt Mittel der ersten
   10 Aktionen, Lead-Time-CI mit 19 statt 20 Clustern u. a.). [Prüfer]
 

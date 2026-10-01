@@ -2980,3 +2980,24 @@ that experiments, negative results, decisions, and confidence can be audited.
   edits were large enough (dropped); Figure 9 axis is the donor-aligned yaw-command change (verified in
   `src/mech_int_vla/causal.py`), not an angle.
 - **Open:** user picks figure variants; prose not yet read by the user; post is private until shared.
+
+### 2026-10-01 16:30 CEST — REVIEW-001: adversarial review of the whole study (three subagents)
+
+- **Stage:** review only; no model fitted, no confirmatory re-evaluation. Diagnostics read the stored Locked Test
+  causal evidence and raw activations (method check, not a new result). Full write-up:
+  `reviews/2026-10-01-adversarial-review.md`.
+- **Most important finding (verified):** the causal patching test was probably too insensitive to detect anything.
+  The action expert computes in bf16 at the patch site (100 % of stored activations have zero low 16 bits; float32
+  simulator data 0 %), the shift is cast to bf16 before `add_` (`instrumentation.py:731`), the edit touches only
+  denoising step 0 of 10, probe and random-direction effects are the same size (median |effect| 5.4e-4 vs 5.2e-4)
+  and correlate 0.72 per pair, and there is no dose response in the sensitivity receipt. No positive control was
+  ever run. Claim 3 should be downgraded from "readout, not a lever" to "not conclusively tested".
+- **Other verified points:** M1 already contains the probe's target (`m1_symmetry_eef_object_yaw_sin/cos`), so
+  M2 ≈ M1 was close to built in; M0 has no proprioception or time (both sit in M1) and its log loss (0.637) is only
+  ≈ 4 % better than a constant predictor (0.664). The Vast instance no longer exists (credit $1.54).
+- **Reviewer points not yet re-verified:** off-manifold rates are an artifact of the reference set; the stated power
+  ("a 3 % effect would most likely have shown") is wrong (≈ 50 % at 3 %, ≈ 80 % at ≈ 4 %); the 25 Aug expectation was
+  written after Calibration (postdiction); Locked Test failures are 47 time-outs and 13 workspace exits.
+- **Decision / next steps:** correct report and blog first (no cost). Then CPU analyses on Calibration data
+  (does the policy use orientation at all; deployable M0⁺ and M1 + raw activations; probes for contact/phase), then
+  one GPU session starting with a patching positive control. Ranked list with costs in the review file.

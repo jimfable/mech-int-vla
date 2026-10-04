@@ -516,6 +516,202 @@ def fig_arch(path=FIGS / "fig-arch.svg", num=8):
     s.text(46, ly + 34, "picked the coloured one", size=11.5, fill=TEXT2)
     s.save(path)
 
+# =============================================================== architecture variants (A, B, C)
+GREYMARK = "#8f8f8f"
+
+
+def _site_bar_h(s, x0, x1, y):
+    """Blue-over-orange double line: the probe reads and the edit writes at the same place."""
+    s.line(x0, y - 1.4, x1, y - 1.4, stroke=BLUE, width=2.6)
+    s.line(x0, y + 1.4, x1, y + 1.4, stroke=ORANGE, width=2.6)
+
+
+def _site_bar_v(s, x, y0, y1):
+    s.line(x - 1.4, y0, x - 1.4, y1, stroke=BLUE, width=2.6)
+    s.line(x + 1.4, y0, x + 1.4, y1, stroke=ORANGE, width=2.6)
+
+
+def _site_label(s, x, y, anchor="start", lines=("after layer 4 of 16,", "in the first of 10 passes"), stacked=False):
+    if stacked:
+        s.text(x, y, "probe reads", size=12.5, weight=700, fill=BLUE, anchor=anchor)
+        s.text(x, y + 16, "edit writes", size=12.5, weight=700, fill=ORANGE, anchor=anchor)
+        off = 32
+    else:
+        s.rich(x, y, [("probe reads", {"fill": BLUE, "weight": 700}), (" and ", {"fill": TEXT2}),
+                      ("edit writes", {"fill": ORANGE, "weight": 700}), (" here", {"fill": TEXT2})],
+               size=12.5, anchor=anchor)
+        off = 16
+    for k, t in enumerate(lines):
+        s.text(x, y + off + 15 * k, t, size=11.5, fill=TEXT2, anchor=anchor)
+
+
+def _box(s, x, y, w, h, lines, fill=FILL, stroke="none", bold_first=False, size=12):
+    s.rect(x, y, w, h, fill=fill, stroke=stroke, rx=5)
+    n = len(lines)
+    for k, t in enumerate(lines):
+        s.text(x + w / 2, y + h / 2 + 4 + (k - (n - 1) / 2) * 15, t, size=size, anchor="middle",
+               weight=600 if (bold_first and k == 0) else None)
+
+
+def fig_arch_a(path=FIGS / "variants/fig-arch-A-paper.svg"):
+    """Like the SmolVLA paper: two layer stacks, bottom to top, with the refinement loop."""
+    s = Svg(470, "SmolVLA drawn bottom to top. Camera images, instruction and joint readings enter a 16-layer "
+                 "vision-language model. Each of the 16 action-expert layers reads the matching vision-language layer. "
+                 "Random noise enters the action expert at the bottom and 50 planned movements leave at the top; the plan "
+                 "goes round 10 times. The probe reads and the edit writes after layer 4 of the action expert, in the first pass.")
+    s.header(8, "Where the probe reads and the edit writes", "Variant A: information flows from bottom to top")
+    rows, rh, rg, top = 16, 13, 3, 116
+    bottom = top + rows * rh + (rows - 1) * rg
+    ry = lambda r: bottom - (r + 1) * rh - r * rg
+    yb = lambda k: bottom - k * (rh + rg) + rg / 2
+    vx0, vx1, ex0, ex1 = 112, 262, 332, 452
+    for r in range(rows):
+        s.rect(vx0, ry(r), vx1 - vx0, rh, fill=FILL, rx=2)
+        s.rect(ex0, ry(r), ex1 - ex0, rh, fill=FILL, rx=2)
+        s.line(vx1 + 4, ry(r) + rh / 2, ex0 - 4, ry(r) + rh / 2, stroke=MUTED, width=0.8, marker="muted")
+    s.text((vx0 + vx1) / 2, top - 10, "Vision-language model", size=12.5, weight=700, anchor="middle")
+    s.text(ex0, top - 10, "Action expert", size=12.5, weight=700)
+    for k, lab in ((0, "layer 1"), (15, "layer 16")):
+        s.text(vx0 - 8, ry(k) + rh / 2 + 4, lab, size=11, fill=TEXT2, anchor="end")
+    s.text((vx1 + ex0) / 2, bottom + 18, "each layer reads", size=11, fill=TEXT2, anchor="middle")
+    s.text((vx1 + ex0) / 2, bottom + 31, "the matching one", size=11, fill=TEXT2, anchor="middle")
+    # inputs and noise (bottom)
+    s.line((vx0 + vx1) / 2, bottom + 44, (vx0 + vx1) / 2, bottom + 6, stroke=INK, width=1.2, marker="ink")
+    s.text((vx0 + vx1) / 2, bottom + 60, "camera images, instruction,", size=12, anchor="middle")
+    s.text((vx0 + vx1) / 2, bottom + 75, "joint readings", size=12, anchor="middle")
+    s.line((ex0 + ex1) / 2, bottom + 44, (ex0 + ex1) / 2, bottom + 6, stroke=INK, width=1.2, marker="ink")
+    s.text((ex0 + ex1) / 2, bottom + 60, "random noise", size=12, anchor="middle")
+    # output (top)
+    _box(s, 380, 62, 160, 34, ["50 planned movements"], fill="#ffffff", stroke=INK, size=12)
+    s.line(444, top - 4, 444, 98, stroke=INK, width=1.2, marker="ink")
+    s.text(454, 112, "the first is carried out", size=11, fill=TEXT2)
+    # refinement loop on the far right
+    lx = 640
+    s.path(f"M540,79 L{lx},79 L{lx},{bottom + 40} L{(ex0 + ex1) / 2 + 8},{bottom + 40}", stroke=TEXT2, width=1.2,
+           dash="4 3", marker="text2")
+    s.text(lx - 8, (top + bottom) / 2 - 8, "plan goes", size=11.5, fill=TEXT2, anchor="end")
+    s.text(lx - 8, (top + bottom) / 2 + 7, "round 10 times", size=11.5, fill=TEXT2, anchor="end")
+    # other measured places
+    for x0, x1 in ((vx0, vx1), (ex0, ex1)):
+        s.line(x0 + 3, yb(12), x1 - 3, yb(12), stroke=GREYMARK, width=2.2, cap="round")
+    # the site
+    _site_bar_h(s, ex0 - 2, ex1 + 2, yb(4))
+    s.line(ex1 + 6, yb(4), 470, yb(4), stroke=MUTED, width=1)
+    _site_label(s, 476, yb(4) + 4, lines=("after layer 4 of 16,", "in the first of", "10 passes"), stacked=True)
+    s.line(476, yb(12) + 1, 490, yb(12) + 1, stroke=GREYMARK, width=2.2, cap="round")
+    s.text(496, yb(12) + 5, "other places", size=11, fill=TEXT2)
+    s.text(496, yb(12) + 18, "I measured", size=11, fill=TEXT2)
+    s.save(path)
+
+
+def fig_arch_b(path=FIGS / "variants/fig-arch-B-flow.svg"):
+    """Left to right: layers along the direction of flow, the refinement loop drawn as a return arrow."""
+    s = Svg(330, "SmolVLA drawn left to right. Inputs enter a 16-layer vision-language model. Each layer of the "
+                 "16-layer action expert below reads the matching vision-language layer. Random noise enters the action "
+                 "expert on the left, goes round 10 times, and leaves on the right as 50 planned movements. The probe reads "
+                 "and the edit writes between layers 4 and 5 of the action expert, in the first pass.")
+    s.header(8, "Where the probe reads and the edit writes", "Variant B: information flows from left to right")
+    n, sw, sg, x0 = 16, 15, 2, 150
+    xs = lambda k: x0 + k * (sw + sg)
+    xe = xs(n) - sg
+    xb = lambda k: x0 + k * (sw + sg) - sg / 2
+    vy, ey, h = 96, 196, 34
+    for k in range(n):
+        s.rect(xs(k), vy, sw, h, fill=FILL, rx=2)
+        s.rect(xs(k), ey, sw, h, fill=FILL, rx=2)
+    s.text(xe + 10, vy + 14, "Vision-language", size=12.5, weight=700)
+    s.text(xe + 10, vy + 29, "model, 16 layers", size=12.5, weight=700)
+    s.text(xe + 10, ey - 6, "Action expert,", size=12.5, weight=700)
+    s.text(xe + 10, ey + 9, "16 layers", size=12.5, weight=700)
+    # context: one arrow per layer would crowd the picture; one arrow and a label say the same
+    cx = xs(14)
+    s.line(cx, vy + h + 4, cx, ey - 5, stroke=MUTED, width=1.2, marker="muted")
+    s.text(cx + 8, (vy + h + ey) / 2 - 2, "each expert layer reads", size=11, fill=TEXT2)
+    s.text(cx + 8, (vy + h + ey) / 2 + 11, "the matching layer above", size=11, fill=TEXT2)
+    # inputs
+    for i, t in enumerate(("camera images,", "instruction,", "joint readings")):
+        s.text(126, vy + 5 + i * 13, t, size=11.5, anchor="end")
+    s.line(130, vy + h / 2, x0 - 4, vy + h / 2, stroke=INK, width=1.2, marker="ink")
+    # noise in, plan out
+    s.text(126, ey + h / 2 + 4, "random noise", size=12, anchor="end")
+    s.line(130, ey + h / 2, x0 - 4, ey + h / 2, stroke=INK, width=1.2, marker="ink")
+    s.line(xe + 4, ey + h / 2 + 10, xe + 30, ey + h / 2 + 10, stroke=INK, width=1.2, marker="ink")
+    s.text(xe + 36, ey + h / 2 + 14, "50 planned movements", size=12)
+    s.text(xe + 36, ey + h / 2 + 28, "after pass 10", size=11, fill=TEXT2)
+    # loop back
+    ly = ey + h + 22
+    s.path(f"M{xe - 4},{ey + h + 3} L{xe - 4},{ly} L{x0 - 14},{ly} L{x0 - 14},{ey + h / 2 + 6}", stroke=TEXT2,
+           width=1.2, dash="4 3", marker="text2")
+    s.text(xe - 10, ly + 15, "the plan goes round 10 times", size=11.5, fill=TEXT2, anchor="end")
+    # other measured places
+    for yy in (vy, ey):
+        s.line(xb(12), yy + 3, xb(12), yy + h - 3, stroke=GREYMARK, width=2.2, cap="round")
+    s.line(24, ly + 52, 38, ly + 52, stroke=GREYMARK, width=2.2, cap="round")
+    s.text(44, ly + 56, "other places I measured", size=11, fill=TEXT2)
+    # the site, labelled in the free space between the two models
+    _site_bar_v(s, xb(4), ey - 2, ey + h + 2)
+    s.path(f"M{xb(4)},{ey - 4} L{xb(4)},{ey - 14} L{xb(4) + 6},{ey - 14}", stroke=MUTED, width=1)
+    _site_label(s, xb(4) + 10, ey - 46, lines=("after layer 4 of 16, first pass",), stacked=True)
+    s.save(path)
+
+
+def fig_arch_c(path=FIGS / "variants/fig-arch-C-unrolled.svg"):
+    """The 10 refinement passes unrolled from left to right, with a zoom into the first pass."""
+    s = Svg(384, "SmolVLA with its 10 refinement passes unrolled from left to right. A vision-language model turns the "
+                 "inputs into a context that every pass reads. Random noise goes through pass 1 to pass 10 and comes out as "
+                 "50 planned movements. A zoom into pass 1 shows the action expert's 16 layers; the probe reads and the edit "
+                 "writes after layer 4.")
+    s.header(8, "Where the probe reads and the edit writes", "Variant C: the 10 refinement passes unrolled")
+    # vision-language model and context bus (top row)
+    vy, vh = 78, 34
+    for k, t in enumerate(("camera images,", "instruction,", "joint readings")):
+        s.text(118, vy + 5 + k * 13, t, size=11.5, anchor="end")
+    s.line(122, vy + vh / 2, 134, vy + vh / 2, stroke=INK, width=1.2, marker="ink")
+    _box(s, 138, vy, 118, vh, ["Vision-language model"], fill=FILL, size=11.5)
+    s.circle(138 + 118 - 8, vy + vh - 7, 2.4, fill=GREYMARK)
+    # passes (track row)
+    bx0, pw, pg, n = 268, 24, 8, 10
+    px = lambda i: bx0 + i * (pw + pg)
+    pend = px(n - 1) + pw
+    ty, th = 146, 36
+    s.path(f"M256,{vy + vh / 2} L{pend - pw / 2},{vy + vh / 2}", stroke=MUTED, width=1.1)
+    s.text(pend - pw / 2, vy + vh / 2 - 7, "context, read by every pass", size=11, fill=TEXT2, anchor="end")
+    for i in range(n):
+        s.line(px(i) + pw / 2, vy + vh / 2, px(i) + pw / 2, ty - 3, stroke=MUTED, width=0.9, marker="muted")
+    s.text(246, ty + th / 2 + 4, "noise", size=12, anchor="end")
+    s.line(250, ty + th / 2, pend + 20, ty + th / 2, stroke=INK, width=1.2, marker="ink")
+    for i in range(n):
+        s.rect(px(i), ty, pw, th, fill=BLUE_L if i == 0 else FILL, stroke=BLUE if i == 0 else "none", width=1.3, rx=3)
+        s.text(px(i) + pw / 2, ty + th / 2 + 4, str(i + 1), size=11, anchor="middle", fill=INK if i == 0 else TEXT2,
+               weight=700 if i == 0 else None)
+    s.circle(px(5) + pw / 2, ty + th - 6, 2.4, fill=GREYMARK)
+    s.text(pend + 24, ty + th / 2 - 3, "50 planned", size=12)
+    s.text(pend + 24, ty + th / 2 + 12, "movements", size=12)
+    s.text(pend, ty + th + 16, "10 refinement passes", size=11, fill=TEXT2, anchor="end")
+    # zoom into pass 1
+    zy, zh, zx0, zx1, nl = 244, 34, 128, 560, 16
+    sw = (zx1 - zx0 - (nl - 1) * 2) / nl
+    zs = lambda k: zx0 + k * (sw + 2)
+    zb = lambda k: zx0 + k * (sw + 2) - 1
+    s.path(f"M{px(0)},{ty + th + 2} L{zx0},{zy - 3}", stroke=BLUE, width=0.9, dash="3 3")
+    s.path(f"M{px(0) + pw},{ty + th + 2} L{zx1},{zy - 3}", stroke=BLUE, width=0.9, dash="3 3")
+    for k in range(nl):
+        s.rect(zs(k), zy, sw, zh, fill=FILL, rx=2)
+    s.text(zx0 - 10, zy + zh / 2 - 2, "inside", size=11.5, weight=600, anchor="end")
+    s.text(zx0 - 10, zy + zh / 2 + 12, "pass 1", size=11.5, weight=600, anchor="end")
+    s.text(zx0, zy + zh + 16, "layer 1", size=11, fill=TEXT2)
+    s.text(zx1, zy + zh + 16, "layer 16", size=11, fill=TEXT2, anchor="end")
+    s.line(zx1 + 4, zy + zh / 2, zx1 + 22, zy + zh / 2, stroke=INK, width=1.2, marker="ink")
+    s.line(zb(12), zy + 3, zb(12), zy + zh - 3, stroke=GREYMARK, width=2.2, cap="round")
+    _site_bar_v(s, zb(4), zy - 2, zy + zh + 2)
+    s.path(f"M{zb(4)},{zy + zh + 4} L{zb(4)},{zy + zh + 30} L{zb(4) + 6},{zy + zh + 30}", stroke=MUTED, width=1)
+    _site_label(s, zb(4) + 10, zy + zh + 34, lines=("after layer 4 of 16, averaged over", "the 50 movement tokens"))
+    s.line(zx1 - 116, zy + zh + 34, zx1 - 102, zy + zh + 34, stroke=GREYMARK, width=2.2, cap="round")
+    s.text(zx1 - 96, zy + zh + 38, "other places", size=11, fill=TEXT2)
+    s.text(zx1 - 96, zy + zh + 51, "I measured (also", size=11, fill=TEXT2)
+    s.text(zx1 - 96, zy + zh + 64, "in pass 6)", size=11, fill=TEXT2)
+    s.save(path)
+
 if __name__ == "__main__":
     (FIGS / "variants").mkdir(parents=True, exist_ok=True)
     fig_runs()
@@ -534,4 +730,7 @@ if __name__ == "__main__":
     fig_edit_c()
     fig_null()
     fig_arch()
+    fig_arch_a()
+    fig_arch_b()
+    fig_arch_c()
     print("figures:", sorted(p.name for p in FIGS.glob("*.svg")))

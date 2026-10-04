@@ -3030,3 +3030,18 @@ that experiments, negative results, decisions, and confidence can be audited.
   actions, and the 25 Aug expectation marked as recorded after Calibration. PDF rebuilt (19 pages, no unresolved
   references). `REPORT.md` gets a pointer note.
 - **Why:** the blog post links to the report; both now say the same.
+
+### 2026-10-04 21:45 CEST — BLOG-003: final consistency pass before the MATS submission
+
+- **Stage:** write-up only.
+- **Changes since BLOG-002:** contents list, four toggles for detail, related-work section (SAFE, DiMaS,
+  Bhardwaj et al., Kim et al.; abstracts checked on arXiv), warning section folded into Result 1, byline
+  "August–September 2026", architecture figure tried in several versions and removed (variants kept on the options
+  page), figures renumbered 1–9.
+- **Final review (subagent) fixes:** Result 2 now names its confound (the outputs monitor had no joint readings or
+  elapsed time); related work no longer revives "readable but not steerable" as a finding of this study; novelty
+  narrowed to the comparison fixed in advance against exact simulator state, and Kim et al.'s opposite finding is
+  stated; Result 1 heading says "the 8 internal signals add almost nothing"; the 1–2 % caveat is in the main text;
+  kill-switch value given as 0.937; raw-vector monitor matched the simulator monitor's AUROC but not its log loss on
+  Calibration and had the highest test AUROC of the four variants; smaller wording fixes (733 inputs, half a rounding
+  step, 42 of 60, re-rendered camera turns).

@@ -143,7 +143,7 @@ details.more[open] { padding-bottom: .4rem; }
       <li><a href="#task">The task</a></li>
       <li><a href="#monitors">Three monitors</a></li>
       <li><a href="#rules">The rules I set before the test</a></li>
-      <li><a href="#result-1">Result 1: nothing on top of the simulator</a></li>
+      <li><a href="#result-1">Result 1: almost nothing on top of the simulator</a></li>
       <li><a href="#result-2">Result 2: most of the way without it</a></li>
       <li><a href="#result-3">Result 3: a test that was too weak</a></li>
       <li><a href="#takeaways">What I take from this</a></li>
@@ -196,7 +196,7 @@ details.more[open] { padding-bottom: .4rem; }
     <figcaption><b>Figure 4.</b> The three stages. After the lock, no monitor, signal or setting was changed.</figcaption>
   </figure>
 
-  <h2 id="result-1">Result 1: the internals add nothing on top of the simulator</h2>
+  <h2 id="result-1">Result 1: the 8 internal signals add almost nothing on top of the simulator</h2>
   <p>To compare monitors I use a score called AUROC. Take one failed run and one successful run at random, and ask how often the monitor gives the failed run the higher failure estimate. A score of 0.5 means guessing, and 1.0 means always right. For each run, I first average the monitor’s estimates (five, or fewer if the run ended before step 200).</p>
 
   <figure id="fig-result1">
@@ -205,37 +205,37 @@ details.more[open] { padding-bottom: .4rem; }
   </figure>
 
   <p>The simulator lifts the score from 0.80 to 0.92. Adding the internals on top changes almost nothing, from 0.920 to 0.924. The two monitors also stay close in each of the eight test conditions (per-estimate AUROC within 0.02).</p>
-  <p>The pass mark I had set in advance uses a different score, log loss. AUROC only checks the order of the estimates. Log loss checks the estimates themselves and punishes confident mistakes; lower is better. The pass mark had two parts: at least 3% lower log loss than the second monitor, and a range that lies entirely on the side of improvement. The third monitor reached 0.5%, with a range from 1.2% worse to 2.1% better (Figure 6). It fails both parts.</p>
+  <p>The pass mark I had set in advance uses a different score, log loss. AUROC only checks the order of the estimates. Log loss checks the estimates themselves and punishes confident mistakes; lower is better. The pass mark had two parts: at least 3% lower log loss than the second monitor, and a range that lies entirely on the side of improvement. The third monitor reached 0.5%, with a range from 1.2% worse to 2.1% better (Figure 6). It fails both parts. A gain of 1 to 2% cannot be ruled out.</p>
 
   <figure id="fig-passmark">
     <div class="plate"><img src="figures/fig6-passmark.svg" alt="A number line from minus 2 to plus 4 percent. The measured improvement is plus 0.5 percent, with a range from minus 1.2 to plus 2.1 percent. The pass mark at 3 percent is to the right of the whole range."></div>
     <figcaption><b>Figure 6.</b> The comparison I had fixed in advance. The blue line is the 90% range for how much the internals improve on the simulator monitor.</figcaption>
   </figure>
 
-  <p><b>No earlier warning either.</b> The project’s working title asked whether something inside the network breaks before the robot’s behavior does. This test could not answer that. In 48 of the 53 failed calibration runs, my automatic labeller found no single clear mistake such as a dropped book; the arm just never finished. So there was no moment of breaking to warn about. The simulator and internals monitors both caught 59 of the 60 test failures, and in 42 of them their alarms went off at the same step.</p>
+  <p><b>No earlier warning either.</b> The project’s working title asked whether something inside the network breaks before the robot’s behavior does. This test could not answer that. In 48 of the 53 failed calibration runs, my automatic labeller found no single clear mistake such as a dropped book; the arm just never finished. So there was no moment of breaking to warn about. The simulator and internals monitors both caught 59 of the 60 test failures, and in 42 of the 60 failed runs their alarms went off at the same step.</p>
 
   <details class="more">
     <summary>How the ranges were computed, and what the test could detect</summary>
     <p>Every number comes with a 90% range. Runs that start from the same scene are not independent of each other, so I computed the ranges by resampling whole starting scenes, not single runs. The ranges therefore rest on 20 independent units, not 158.</p>
-    <p>With 20 starting scenes, the test could reliably catch an improvement of about 4% or more. A real improvement of 3% would have passed only about half the time, and one of 1 to 2% cannot be ruled out.</p>
+    <p>With 20 starting scenes, the test could reliably catch an improvement of about 4% or more. A real improvement of 3% would have passed only about half the time.</p>
   </details>
 
   <h2 id="result-2">Result 2: without simulator state, the internals get about two thirds of the way</h2>
-  <p>A real robot has no simulator that tells it where the book is. My original plan left out the case closest to a real robot: a monitor that sees the outputs and the internals, but no simulator state. I tested it after I had seen the main result, on the same test runs. Like the others, it was trained on the calibration runs. It gets the raw vector of 720 numbers instead of the 8 signals built on the angle probe. I picked this version because it was the best of four on the calibration runs, where it matched the simulator monitor.</p>
+  <p>A real robot has no simulator that tells it where the book is. My original plan left out the case closest to a real robot: a monitor that sees the outputs and the internals, but no simulator state. I tested it after I had seen the main result, on the same test runs. Like the others, it was trained on the calibration runs. It gets the raw vector of 720 numbers instead of the 8 signals built on the angle probe. I picked this version because it was the best of four on the calibration runs, where it matched the simulator monitor’s AUROC but not its log loss (8% worse). All four were then scored on the test runs, and this one had the highest AUROC there too.</p>
 
   <figure id="fig-result2">
     <div class="plate"><img src="figures/fig7-result2.svg" alt="Dot plot of AUROC. Outputs 0.80, outputs plus the 8 designed signals 0.80, outputs plus the raw internal numbers 0.89, outputs plus simulator 0.92."></div>
     <figcaption><b>Figure 7.</b> Monitors with and without simulator state, on the same 158 test runs. For this comparison I re-trained the outputs and simulator monitors alongside the new ones, without the final calibration step. Their AUROCs differ from Figure 5 by 0.004 at most.</figcaption>
   </figure>
 
-  <p>The new monitor lands between the other two. Outputs alone score 0.80 and outputs plus simulator 0.92, while outputs plus internals score 0.89. That closes 73% of the gap by AUROC and 66% by log loss. Its log loss is 12% lower than with outputs alone (range 5% to 18%) and 7% higher than the simulator monitor’s (range 19% higher to 4% lower). So it clearly beats outputs alone, but whether it falls short of the simulator monitor is not settled.</p>
-  <p>The 8 signals built on the angle probe helped much less. A monitor with those signals instead of the raw vector scored 0.80, the same as outputs alone. Its log loss was 8% lower than with outputs alone, against 12% for the raw vector, and its range just reaches zero. One more catch: even the outputs monitor used the simulator to re-render the turned or moved book for some of its checks.</p>
+  <p>The new monitor lands between the other two (Figure 7). Outputs alone score 0.80 and outputs plus simulator 0.92, while outputs plus internals score 0.89. That closes 73% of the gap by AUROC and 66% by log loss. Its log loss is 12% lower than with outputs alone (range 5% to 18%) and 7% higher than the simulator monitor’s (range 19% higher to 4% lower). So it clearly beats outputs alone, but whether it falls short of the simulator monitor is not settled.</p>
+  <p>The 8 signals built on the angle probe helped much less. A monitor with those signals instead of the raw vector scored 0.80, the same as outputs alone. Its log loss was 8% lower than with outputs alone, against 12% for the raw vector, and its range just reaches zero. One more catch: even the outputs monitor used the simulator to re-render the turned book, the moved book and the turned camera for some of its checks. It also cuts the other way: the outputs monitor never saw the arm’s joint readings or how many steps had passed. A real robot has both, and the network receives the joint readings as input, so part of the gain may come from them.</p>
 
   <h2 id="result-3">Result 3: the angle can be read, but my test of its use was too weak</h2>
   <p>The 8 internal signals all come from one reading. I trained a linear probe on the vector of 720 numbers: a simple formula that predicts the angle between the gripper and the book from those numbers. The probe works, but only roughly. Its average error is 14.5°. Always guessing one fixed angle gives 19°, and a probe on the arm’s joint readings alone gives 18°. When the book turns by 15°, the probe’s reading moves by only about 2°.</p>
   <p>A working probe shows that the angle can be read from these numbers. It does not show that the network reads it from there. The information could be a by-product that nothing later in the network uses. To test whether the network uses it, you have to change it and watch what happens.</p>
   <p>So I edited the numbers while the network computed its next movement (Figure 8). I took a moment from one run and a partner moment from another run that matched it closely: the same task stage, gripper and book within 2 cm, but the book turned 30° to 90° differently. Then I moved the first moment’s numbers a quarter of the way toward the partner’s. I did this only along the two directions the probe uses and left the other 718 unchanged. If the network reads the angle from there, the gripper’s planned turn should shift toward the partner’s planned turn.</p>
-  <p>Two checks keep this fair. I repeated the same edit along 1,000 random pairs of directions, with the same size. And I repeated it with a partner whose book angle differed by less than 5°, where nothing should happen.</p>
+  <p>Two controls: I repeated the same edit along 1,000 random pairs of directions, with the same size. And I repeated it with a partner whose book angle differed by less than 5°, where nothing should happen.</p>
 
   <figure id="fig-edit">
     <div class="plate"><img src="figures/fig8-edit.svg" alt="Sketch of the edit. This moment and a partner moment with the book turned are two points. The edit moves this moment a quarter of the way toward the partner, only along the probe direction. Controls are steps of the same size in random directions."></div>
@@ -251,31 +251,31 @@ details.more[open] { padding-bottom: .4rem; }
     <div class="plate"><img src="figures/fig9-null.svg" alt="Histogram of 1,000 random edits. The edit along the probe sits inside the pile, below the line that 95 percent of random edits stay under."></div>
     <figcaption><b>Figure 9.</b> For each of the 1,000 random directions, the median change in the turn command over the 52 pairs. The edit along the probe sits inside the pile, a little left of its middle. Most random edits also land below zero. As the text below explains, this test was too weak to rule out an effect.</figcaption>
   </figure>
-    <p>The network computes these numbers in a 16-bit format (bfloat16), which keeps only about two to three significant digits. My edits were tiny: they moved the vector by about 0.24% of its length. For about half of the 720 numbers, the change was smaller than the rounding step and disappeared. Edits along the probe and along random directions moved the turn command by the same amount, about 0.05% of its usual spread, and on the same moment they tended to move it the same way. Larger edits did not move it more. I also edited only the first of the 10 refinement steps, so the 9 later steps could undo the edit.</p>
+    <p>The network computes these numbers in a 16-bit format (bfloat16), which keeps only about two to three significant digits. My edits were tiny: they moved the vector by about 0.24% of its length. For about half of the 720 numbers, the change was smaller than half the rounding step, so rounding erased it. Edits along the probe and along random directions moved the turn command by the same amount, about 0.05% of its usual spread, and on the same moment they tended to move it the same way. Larger edits did not move it more. I also edited only the first of the 10 refinement steps, so the 9 later steps could undo the edit.</p>
     <p>What was missing is a positive control: an edit that should clearly change the movement, such as swapping in the partner’s whole vector at every refinement step. Without it, I cannot tell a network that ignores the angle from a test that cannot see anything.</p>
   </details>
 
   <p>So the angle can be read from this layer, weakly. Whether the network acts through that reading is still open. The first thing to run next is that positive control.</p>
 
   <h2 id="takeaways">What I take from this</h2>
-  <p>On this robot and this task, the 8 internal signals told me nothing about coming failures that exact simulator state did not already tell me. Without simulator state, the raw internal numbers were useful and got about two thirds of the way. The one internal reading I could interpret, the book’s angle, could be read out only weakly, and my test of whether the robot uses it was too weak to tell.</p>
-  <p>For monitoring a robot like this, the internal numbers look worth recording. In this study, though, the signals I designed from them helped less than the raw numbers.</p>
+  <p>On this robot and this task, the 8 internal signals told me almost nothing about coming failures that exact simulator state did not already tell me. Without simulator state, the raw internal numbers were useful and got about two thirds of the way. The one internal reading I could interpret, the book’s angle, could be read out only weakly, and my test of whether the robot uses it was too weak to tell.</p>
+  <p>For monitoring a robot like this, the internal numbers may be worth recording, but I have not compared them with a baseline that also gets joint readings and elapsed time. In this study, though, the signals I designed from them helped less than the raw numbers.</p>
 
   <h2 id="related">How this fits with other work</h2>
-  <p>Reading failure signals from inside robot policies is not new. <a href="https://arxiv.org/abs/2506.09937">SAFE</a> (Gu et al., 2025) trains a failure detector on the internal features of OpenVLA, π0 and π0-FAST and finds that these features carry general knowledge about success and failure. As far as I can tell, its baselines are built from the policies’ own outputs and features, not from exact simulator state. Result 2 points the same way as SAFE. What this post adds is the comparison against exact simulator state, which asks whether the internals know anything beyond the state of the world.</p>
-  <p>Result 3 fits a pattern other groups have found. <a href="https://arxiv.org/abs/2607.14280">DiMaS</a> (Khayatan et al., 2026) reports that in the action expert of flow-matching robot policies, behavior can be read out along straight-line directions but not steered along them. <a href="https://arxiv.org/abs/2608.13474">Bhardwaj et al.</a> (2026) read task progress from π0.5 with a linear probe, but could not use the probe to steer the policy in a meaningful way. <a href="https://arxiv.org/abs/2609.34684">Kim et al.</a> (2026) show that a readout can be accurate on natural runs and still respond only weakly when the object is moved on purpose, which may describe my angle probe.</p>
+  <p>Reading failure signals from inside robot policies is not new. <a href="https://arxiv.org/abs/2506.09937">SAFE</a> (Gu et al., 2025) trains a failure detector on the internal features of OpenVLA, π0 and π0-FAST and finds that these features carry general knowledge about success and failure. As far as I can tell, its baselines are built from the policies’ own outputs and features, not from exact simulator state. Result 2 points the same way as SAFE. What this post adds is a comparison fixed in advance against exact simulator state at every step, which asks whether the internals know anything beyond the state of the world.</p>
+  <p>Other groups have found that what can be read out of a robot policy cannot always be used to steer it. That is the question my edit test was too weak to settle. <a href="https://arxiv.org/abs/2607.14280">DiMaS</a> (Khayatan et al., 2026) reports that in the action expert of flow-matching robot policies, behavior can be read out along straight-line directions but not steered along them. <a href="https://arxiv.org/abs/2608.13474">Bhardwaj et al.</a> (2026) read task progress from π0.5 with a linear probe, but could not use the probe to steer the policy in a meaningful way. <a href="https://arxiv.org/abs/2609.34684">Kim et al.</a> (2026) show that a readout can be accurate on natural runs and still respond only weakly when the object is moved on purpose, which may describe my angle probe. They also add such readout properties to a failure predictor built on physical variables and report lower error; my Result 1 found no such gain.</p>
   <p>Bhardwaj et al. also use their progress probe to catch runs that have stalled. Since most failures here were stalls, a progress probe may be the internal signal to test next, rather than the book’s angle.</p>
 
   <h2 id="why">Why this matters</h2>
   <p>Robot policies like SmolVLA are being tried on real robots. When they fail, they often fail quietly: the arm keeps trying and never finishes, as in Figure 1. A monitor that sees a failure coming could stop the robot, call a person, or hand over to a safer fallback.</p>
-  <p>A real robot has no simulator. What it has are its camera images, its joint readings, its own plans, and, if you record them, the numbers inside its network. So the practical question is which of these warns best and earliest. Interpretability earns its keep if the internals carry warnings that the outputs do not. Result 2 suggests they might, but this study was not built to show it.</p>
+  <p>A real robot has no simulator. What it has are its camera images, its joint readings, its own plans, and, if you record them, the numbers inside its network. So the practical question is which of these warns best and earliest. Interpretability is worth it here only if the internals carry warnings that the outputs do not. Result 2 suggests they might, but this study was not built to show it.</p>
   <p>A second use is training data. If a monitor can tell where a policy is weak, it can also tell where more demonstrations would help most. Collecting robot data is slow and expensive, so aiming it well matters. This only pays off if the monitor finds weak spots that cheaper signals miss, and I did not test that here.</p>
   <p>The third reason is about interpretability itself. People who want to check what a robot policy has learned, for example in a safety audit, will reach for probes. A probe shows that information can be read out. It does not show that the policy uses it. Testing use needs an edit strong enough to have an effect, and Result 3 shows how easy it is to run one that is not.</p>
 
   <h2 id="limits">Limits</h2>
   <ul class="limits">
     <li>One robot network, one task, and 158 test runs from 20 starting scenes.</li>
-    <li>The failures were almost all of one kind: the arm just never finished before the time limit. Failures like that show up early in the simulator state, for example when the task stays at “before the grasp” for hundreds of steps. That leaves little room for the internals. By a rule I set in advance, the task would have counted as too easy if the simulator monitor had reached an AUROC of 0.95 on the calibration runs. It reached 0.94.</li>
+    <li>The failures were almost all of one kind: the arm just never finished before the time limit. Failures like that show up early in the simulator state, for example when the task stays at “before the grasp” for hundreds of steps. That leaves little room for the internals. By a rule I set in advance, the task would have counted as too easy if the simulator monitor had reached an AUROC of 0.95 on the calibration runs. It reached 0.937.</li>
     <li>The edit test was too weak: edits near the rounding step of 16-bit numbers, only the first of 10 refinement steps, one layer, and no positive control.</li>
   </ul>
   <details class="more">
@@ -283,9 +283,9 @@ details.more[open] { padding-bottom: .4rem; }
   <ul class="limits">
     <li>My plan also required the edit to work at two of three layers. I could not check that, because I had saved the probe for only one layer.</li>
     <li>The probe is linear and rough. A probe for something else, such as whether the gripper holds the book, might behave differently.</li>
-    <li>The outputs-only monitor is less realistic than it sounds. Some of its checks turn the book in a copy of the simulator, which a real robot cannot do.</li>
+    <li>The outputs-only monitor is less realistic than it sounds. Some of its checks turn or move the book, or turn the camera, in a copy of the simulator, which a real robot cannot do.</li>
     <li>The model type and settings of all monitors were chosen by the second monitor’s score on the calibration runs. That could favor it slightly.</li>
-    <li>The outputs-plus-internals monitor was added after the main run. It is also a model with 720 inputs trained on 160 runs, which can be fragile.</li>
+    <li>The outputs-plus-internals monitor was added after the main run. It is also a model with 733 inputs trained on 160 runs, which can be fragile.</li>
   </ul>
   </details>
 
@@ -293,7 +293,7 @@ details.more[open] { padding-bottom: .4rem; }
     <h3 id="odds-h">What would change my mind</h3>
     <ul>
       <li>I think signals like my 8 add nothing on top of the simulator for this robot and task. A different internal signal, for example about the grip, that beats the simulator monitor by 3% under the same rules would change my mind. I never tried the raw 720 numbers on top of the simulator.</li>
-      <li>My edit test could not detect an effect. If a positive control works at this place and the probe direction still does nothing, I would believe the network does not use this reading. If the probe direction then works, Result 3 flips.</li>
+      <li>My edit test could not detect an effect. If a positive control works at this place and the probe direction still does nothing, I would believe the network does not use this reading. If the probe direction then works, the network does use this reading.</li>
       <li>The study may also have been too small to see a small real effect, more so for the direction test of the edit than for the monitors.</li>
       <li>Most failures here were slow, and slow failures are easy to see from outside. A task with sudden failures, such as a book slipping out of the gripper, could give the internals more room. If internal signals beat the simulator monitor on such a task, I would change my mind about the first result.</li>
     </ul>

@@ -712,6 +712,82 @@ def fig_arch_c(path=FIGS / "variants/fig-arch-C-unrolled.svg"):
     s.text(zx1 - 96, zy + zh + 64, "in pass 6)", size=11, fill=TEXT2)
     s.save(path)
 
+
+# =============================================================== architecture, residual-stream view (variant D)
+def fig_arch_d(path=FIGS / "variants/fig-arch-D-stream.svg", num=8):
+    """Transformer-Circuits style: the action expert as one residual stream, bottom to top."""
+    s = Svg(520, "The action expert of SmolVLA drawn as a residual stream from bottom to top. Random noise for 50 "
+                 "movement tokens enters at the bottom; each of the 16 layers reads from the stream and adds its result "
+                 "back. The layers also read a context that the vision-language model computes once from the camera "
+                 "images, the instruction and the joint readings. At the top comes a small update to the 50 planned "
+                 "movements; the whole stack runs 10 times. The probe reads and the edit writes on the stream after "
+                 "layer 4, in the first of the 10 passes.")
+    s.header(num, "Where the probe reads and the edit writes",
+             "The action expert as one stream of numbers, from bottom to top")
+    X = 262                                   # the residual stream
+    y_top, y_bot = 104, 462
+    bx0, bx1, bh = 300, 384, 22               # layer blocks to the right of the stream
+    blocks = [(1, 410), (2, 380), (3, 350), (4, 320), (5, 248), (16, 116)]
+    # stream
+    s.line(X, y_bot, X, y_top, stroke=INK, width=2.2)
+    s.add(f'<polygon points="{X - 6},{y_top + 2} {X + 6},{y_top + 2} {X},{y_top - 8}" fill="{INK}"/>')
+    s.text(X, y_bot + 22, "random noise for the 50 movement tokens", size=12, anchor="middle")
+    s.text(X, y_top - 30, "a small update to the 50 planned", size=12, anchor="middle")
+    s.text(X, y_top - 15, "movements (after pass 10: the plan)", size=12, anchor="middle")
+    s.text(X + 10, y_bot - 4, "720 numbers per token", size=11, fill=TEXT2)
+    # layer blocks: read from the stream below, add back above
+    def block(label, y, dashed=False, h=bh):
+        s.rect(bx0, y, bx1 - bx0, h, fill="#ffffff" if dashed else FILL, stroke=MUTED if dashed else "none",
+               dash="3 3" if dashed else None, rx=4)
+        s.text((bx0 + bx1) / 2, y + h / 2 + 4, label, size=11.5, anchor="middle", fill=TEXT2 if dashed else INK)
+        yr, yw = y + h - 5, y + 5
+        s.line(X + 2, yr, bx0 - 3, yr, stroke=MUTED, width=1.1, marker="muted")
+        s.line(bx0 - 2, yw, X + 9, yw, stroke=MUTED, width=1.1, marker="muted")
+        s.circle(X, yw, 4.2, fill="#ffffff", stroke=MUTED, width=1.1)
+        s.line(X - 2.4, yw, X + 2.4, yw, stroke=MUTED, width=1)
+        s.line(X, yw - 2.4, X, yw + 2.4, stroke=MUTED, width=1)
+    for n, y in blocks:
+        block(f"layer {n}", y)
+    block("layers 6 to 15", 150, dashed=True, h=82)
+    s.text(bx1 + 30, 124, "Action expert", size=12.5, weight=700)
+    s.text(bx1 + 30, 140, "16 layers", size=11.5, fill=TEXT2)
+    # context from the vision-language model
+    bx = bx1 + 16
+    s.path(f"M{bx - 6},{116} L{bx},{116} L{bx},{432} L{bx - 6},{432}", stroke=MUTED, width=1.1)
+    vx0, vx1, vy0, vy1 = 470, 640, 250, 304
+    s.rect(vx0, vy0, vx1 - vx0, vy1 - vy0, fill=FILL, rx=5)
+    s.text((vx0 + vx1) / 2, vy0 + 23, "Vision-language model", size=12, weight=600, anchor="middle")
+    s.text((vx0 + vx1) / 2, vy0 + 40, "runs once per control step", size=11, fill=TEXT2, anchor="middle")
+    s.line(vx0 - 4, (vy0 + vy1) / 2, bx + 6, (vy0 + vy1) / 2, stroke=MUTED, width=1.2, marker="muted")
+    s.text((bx + vx0) / 2 + 2, (vy0 + vy1) / 2 - 8, "context", size=11.5, fill=TEXT2, anchor="middle")
+    s.line((vx0 + vx1) / 2, vy1 + 40, (vx0 + vx1) / 2, vy1 + 5, stroke=INK, width=1.2, marker="ink")
+    s.text((vx0 + vx1) / 2, vy1 + 56, "camera images, instruction,", size=11.5, anchor="middle")
+    s.text((vx0 + vx1) / 2, vy1 + 70, "joint readings", size=11.5, anchor="middle")
+    # another measured place
+    yg = 186
+    s.circle(X, yg, 4.5, fill=GREYMARK)
+    s.line(X - 8, yg, X - 22, yg, stroke=GREYMARK, width=1)
+    s.text(X - 26, yg + 4, "also measured here", size=11, fill=TEXT2, anchor="end")
+    # the site: after layer 4
+    ys = 291
+    s.circle(X, ys, 14, fill=BLUE_L)
+    s.circle(X, ys, 6.5, fill=INK)
+    s.line(X - 9, ys - 6, X - 40, ys - 6, stroke=BLUE, width=2.2, marker="blue")
+    s.line(X - 40, ys + 6, X - 11, ys + 6, stroke=ORANGE, width=2.2, marker="orange")
+    s.text(X - 46, ys - 2, "probe reads the angle here", size=12.5, weight=700, fill=BLUE, anchor="end")
+    s.text(X - 46, ys + 14, "edit changes it here", size=12.5, weight=700, fill=ORANGE, anchor="end")
+    s.text(X - 46, ys + 31, "after layer 4 of 16", size=11.5, fill=TEXT2, anchor="end")
+    # the 10 passes
+    py = 400
+    s.text(24, py, "The whole stack runs 10 times,", size=11.5, fill=TEXT2)
+    s.text(24, py + 14, "turning noise into the plan.", size=11.5, fill=TEXT2)
+    for i in range(10):
+        x = 24 + i * 17
+        s.rect(x, py + 26, 13, 13, fill=BLUE_L if i == 0 else FILL, stroke=BLUE if i == 0 else "none", width=1.2, rx=2)
+    s.text(24, py + 56, "Probe and edit act in pass 1 only.", size=11.5, weight=600, fill=INK)
+    s.save(path)
+
+
 if __name__ == "__main__":
     (FIGS / "variants").mkdir(parents=True, exist_ok=True)
     fig_runs()
@@ -733,4 +809,5 @@ if __name__ == "__main__":
     fig_arch_a()
     fig_arch_b()
     fig_arch_c()
+    fig_arch_d()
     print("figures:", sorted(p.name for p in FIGS.glob("*.svg")))

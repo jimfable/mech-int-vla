@@ -48,6 +48,10 @@ figcaption b { color: var(--fg); font-weight: 600; }
 
   <h2>Figure 8: where the probe reads and the edit writes</h2>
   <figure>
+    <div class="plate"><img src="figures/variants/fig-arch-D-stream.svg" alt="Variant D: the action expert as a residual stream, bottom to top."></div>
+    <figcaption><b>D, residual stream</b> <span class="inpost">· in the post</span>. In the style of Anthropic’s transformer-circuits figures. The action expert is one stream of numbers from noise at the bottom to the update at the top; each layer reads from it and adds back. The probe and the edit act on the stream at one marked point.</figcaption>
+  </figure>
+  <figure>
     <div class="plate"><img src="figures/variants/fig-arch-A-paper.svg" alt="Variant A: two layer stacks, bottom to top, with the refinement loop on the right."></div>
     <figcaption><b>A, bottom to top.</b> Closest to the figure in the SmolVLA paper. Inputs and noise enter at the bottom, the plan leaves at the top, and the dashed loop shows the 10 passes. Each expert layer reads the matching vision-language layer, as the arrows show.</figcaption>
   </figure>
@@ -61,7 +65,7 @@ figcaption b { color: var(--fg); font-weight: 600; }
   </figure>
   <figure>
     <div class="plate"><img src="figures/fig-arch.svg" alt="Current version: layers by refinement steps as a grid."></div>
-    <figcaption><b>Grid</b> <span class="inpost">· in the post</span>. Layers as rows, refinement steps as columns, like the steering post. Shows layer and step at once, but where the input enters and the output leaves is less obvious.</figcaption>
+    <figcaption><b>Grid.</b> Layers as rows, refinement steps as columns, like the steering post. Shows layer and step at once, but where the input enters and the output leaves is less obvious.</figcaption>
   </figure>
 
   <h2>Figure 9: reading and editing the same numbers</h2>

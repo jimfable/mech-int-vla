@@ -3017,3 +3017,16 @@ that experiments, negative results, decisions, and confidence can be audited.
   audits) and "What I would do with more compute" (ordered plan with GPU-hour estimates from measured unit costs).
 - **Not changed:** the report (report.tex) still states Claim 3 as "readout, not a lever"; a correction addendum is
   pending the owner's decision.
+
+### 2026-10-04 21:20 CEST — REPORT-CORRECTION-001: report corrected after REVIEW-001
+
+- **Stage:** write-up correction only; no number changed, no new analysis.
+- **What:** `paper/report.tex` gets a dated correction box on page 1 and targeted inline edits: subtitle and
+  executive-summary item 3 (use of the probe direction not established), takeaway, Claim 3 box and section title,
+  causal "Result" (no larger than random; off-manifold distance not measured for unpatched recipients) and
+  "Interpretation" (inconclusive without a positive control), power sentence (a true 3 % lift passes about half the
+  time; ≈ 4 % for 80 % power), probe location (after the first 4 of 16 expert layers, input to zero-indexed
+  `layers[4]`; candidates after the first 4 and 12), effect read as the mean yaw change over the first 10 planned
+  actions, and the 25 Aug expectation marked as recorded after Calibration. PDF rebuilt (19 pages, no unresolved
+  references). `REPORT.md` gets a pointer note.
+- **Why:** the blog post links to the report; both now say the same.

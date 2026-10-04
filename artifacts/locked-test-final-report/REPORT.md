@@ -1,5 +1,11 @@
 # Locked Test — final report (single preregistered evaluation, 2026-09-17)
 
+> **Correction (2026-10-04):** the causal patching test (§7) was too weak to support "readout, not a lever": the
+> edit was applied in bfloat16 at about 0.24 % of the activation norm (below half a rounding step for half of the
+> elements), at one of ten denoising steps, with probe and random edits of the same size and no positive control.
+> The verdicts below stand as computed; Claim 3 is inconclusive. Details: `paper/report.pdf` (correction note) and
+> `reviews/2026-10-01-adversarial-review.md`.
+
 Report JSON: `report.json` (SHA-256 `f7d51bf8da4fae2107e7be73113c87825da66c9adbc65726e7731a9b0fc8c814`),
 produced once by `ops/locked_test_evaluate.py` at commit `7edc069b…` on Vast instance
 51243106 (1× RTX 5090, `/venv/main`, Python 3.12.13) from: manifest `1fd8c818…`,

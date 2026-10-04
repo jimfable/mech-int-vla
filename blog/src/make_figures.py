@@ -309,7 +309,7 @@ def fig_result2():
 
 
 # =============================================================== 8. reading vs editing (variant A, used in the post)
-def fig_edit_a(path=FIGS / "fig8-edit.svg", num=9, sub="Sketch. The 720 numbers drawn as two axes."):
+def fig_edit_a(path=FIGS / "fig8-edit.svg", num=8, sub="Sketch. The 720 numbers drawn as two axes."):
     s = Svg(352, "Sketch of the edit. This moment and a partner moment with the book turned are two points. "
                  "The edit moves this moment a quarter of the way toward the partner, only along the probe "
                  "direction. Controls are steps of the same size in random directions.")
@@ -416,7 +416,7 @@ def fig_null():
     X = lambda v: xl + (v - lo) / (hi - lo) * (xr - xl)
     s = Svg(330, "Histogram of 1,000 random edits. The edit along the probe sits inside the pile, below the line "
                  "that 95 percent of random edits stay under.")
-    s.header(10, "The probe edit against 1,000 random edits",
+    s.header(9, "The probe edit against 1,000 random edits",
              "Change in the gripper’s turn command, toward the partner’s (median over 52 pairs)")
     ytop, yax = 104, 262
     edges = np.arange(lo, hi + 1e-9, 0.25)

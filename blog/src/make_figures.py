@@ -309,7 +309,7 @@ def fig_result2():
 
 
 # =============================================================== 8. reading vs editing (variant A, used in the post)
-def fig_edit_a(path=FIGS / "fig8-edit.svg", num=8, sub="Sketch. The 720 numbers drawn as two axes."):
+def fig_edit_a(path=FIGS / "fig8-edit.svg", num=9, sub="Sketch. The 720 numbers drawn as two axes."):
     s = Svg(352, "Sketch of the edit. This moment and a partner moment with the book turned are two points. "
                  "The edit moves this moment a quarter of the way toward the partner, only along the probe "
                  "direction. Controls are steps of the same size in random directions.")
@@ -416,7 +416,7 @@ def fig_null():
     X = lambda v: xl + (v - lo) / (hi - lo) * (xr - xl)
     s = Svg(330, "Histogram of 1,000 random edits. The edit along the probe sits inside the pile, below the line "
                  "that 95 percent of random edits stay under.")
-    s.header(9, "The probe edit against 1,000 random edits",
+    s.header(10, "The probe edit against 1,000 random edits",
              "Change in the gripper’s turn command, toward the partner’s (median over 52 pairs)")
     ytop, yax = 104, 262
     edges = np.arange(lo, hi + 1e-9, 0.25)
@@ -442,6 +442,80 @@ def fig_null():
     s.save(FIGS / "fig9-null.svg")
 
 
+# =============================================================== architecture: where the probe reads and the edit writes
+def fig_arch(path=FIGS / "fig-arch.svg", num=8):
+    s = Svg(448, "SmolVLA during one control step. Camera images, the instruction and the joint readings go into a "
+                 "16-layer vision-language model, which runs once. The 16-layer action expert then runs 10 refinement "
+                 "steps, from random noise to 50 planned movements, and reads the vision-language context at every step. "
+                 "The probe reads, and the edit writes, at one place: after layer 4 of the action expert, in the first "
+                 "refinement step, averaged over the 50 movement tokens. Four other measured places are marked in grey.")
+    s.header(num, "Where the probe reads and the edit writes",
+             "SmolVLA during one control step. Rows are layers, columns are refinement steps.")
+    rows, rh, rg, top = 16, 12, 1, 112
+    bottom = top + rows * rh + (rows - 1) * rg
+    row_y = lambda r: bottom - (r + 1) * rh - r * rg          # top edge of layer r+1 (r = 0 is layer 1)
+    yb = lambda k: bottom - k * (rh + rg) + rg / 2              # boundary after k layers
+    GREY = "#8f8f8f"
+    # vision-language model
+    vx, vw = 132, 54
+    for r in range(rows):
+        s.rect(vx, row_y(r), vw, rh, fill=FILL)
+    s.text(vx + vw / 2, top - 30, "Vision-language model", size=12.5, weight=700, anchor="middle")
+    s.text(vx + vw / 2, top - 15, "16 layers, runs once", size=11.5, fill=TEXT2, anchor="middle")
+    for i, t in enumerate(("joint readings", "instruction", "camera images")):
+        y = row_y(i * 2) + rh / 2 + 4
+        s.text(112, y, t, size=12, anchor="end")
+        s.line(116, y - 4, vx - 4, y - 4, stroke=MUTED, width=1.2, marker="muted")
+    # action expert grid
+    gx, cw, cg, cols = 290, 22, 4, 10
+    gx2 = gx + cols * cw + (cols - 1) * cg
+    for c in range(cols):
+        x = gx + c * (cw + cg)
+        for r in range(rows):
+            s.rect(x, row_y(r), cw, rh, fill=FILL)
+        s.text(x + cw / 2, bottom + 17, str(c + 1), size=11.5, fill=INK if c == 0 else TEXT2,
+               weight=700 if c == 0 else None, anchor="middle")
+    s.text((gx + gx2) / 2, top - 30, "Action expert", size=12.5, weight=700, anchor="middle")
+    s.text((gx + gx2) / 2, top - 15, "16 layers, 720 numbers per token", size=11.5, fill=TEXT2, anchor="middle")
+    s.text(gx - 10, row_y(15) + rh / 2 + 4, "layer 16", size=11, fill=TEXT2, anchor="end")
+    s.text(gx - 10, row_y(0) + rh / 2 + 4, "layer 1", size=11, fill=TEXT2, anchor="end")
+    s.line(gx, bottom + 29, gx2, bottom + 29, stroke=MUTED, width=1.1, marker="muted")
+    s.text(gx, bottom + 45, "random noise", size=11.5, fill=TEXT2)
+    s.text(gx2, bottom + 45, "planned movements", size=11.5, fill=TEXT2, anchor="end")
+    # context arrow
+    ym = row_y(9) + rh / 2
+    s.line(vx + vw + 6, ym, gx - 6, ym, stroke=INK, width=1.2, marker="ink")
+    s.text((vx + vw + gx) / 2, ym - 10, "context", size=11.5, fill=TEXT2, anchor="middle")
+    s.text((vx + vw + gx) / 2, ym + 20, "read at every step", size=11.5, fill=TEXT2, anchor="middle")
+    # output
+    yo = row_y(15) + rh / 2
+    s.line(gx2 + 4, yo, gx2 + 22, yo, stroke=INK, width=1.2, marker="ink")
+    for k, t in enumerate(("50 planned", "movements;", "the first one", "is carried out")):
+        s.text(gx2 + 27, yo + 4 + k * 15, t, size=12)
+    # other measured places: after 4 and 12 layers at steps 1 and 6, and the VLM state token after 12 layers
+    def tick(x0, x1, y):
+        s.line(x0 + 2, y, x1 - 2, y, stroke=GREY, width=2.2, cap="round")
+    for c, k in ((5, 4), (0, 12), (5, 12)):
+        x = gx + c * (cw + cg)
+        tick(x, x + cw, yb(k))
+    tick(vx, vx + vw, yb(12))
+    # the site
+    y = yb(4)
+    s.line(gx - 1, y - 1.4, gx + cw + 1, y - 1.4, stroke=BLUE, width=2.6)
+    s.line(gx - 1, y + 1.4, gx + cw + 1, y + 1.4, stroke=ORANGE, width=2.6)
+    lx, ly = gx - 4, bottom + 78
+    s.path(f"M{gx - 2},{y} L{lx},{y} L{lx},{ly} L{lx + 8},{ly}", stroke=MUTED, width=1)
+    s.rich(lx + 12, ly + 4, [("probe reads", {"fill": BLUE, "weight": 700}), (" and ", {"fill": TEXT2}),
+                             ("edit writes", {"fill": ORANGE, "weight": 700}), (" here", {"fill": TEXT2})], size=12.5)
+    s.text(lx + 12, ly + 20, "after layer 4 of 16, refinement step 1,", size=11.5, fill=TEXT2)
+    s.text(lx + 12, ly + 35, "averaged over the 50 movement tokens", size=11.5, fill=TEXT2)
+    # legend for the grey marks
+    s.line(26, ly, 40, ly, stroke=GREY, width=2.2, cap="round")
+    s.text(46, ly + 4, "other places I measured;", size=11.5, fill=TEXT2)
+    s.text(46, ly + 19, "a rule fixed in advance", size=11.5, fill=TEXT2)
+    s.text(46, ly + 34, "picked the coloured one", size=11.5, fill=TEXT2)
+    s.save(path)
+
 if __name__ == "__main__":
     (FIGS / "variants").mkdir(parents=True, exist_ok=True)
     fig_runs()
@@ -459,4 +533,5 @@ if __name__ == "__main__":
     fig_edit_b()
     fig_edit_c()
     fig_null()
+    fig_arch()
     print("figures:", sorted(p.name for p in FIGS.glob("*.svg")))

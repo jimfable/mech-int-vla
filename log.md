@@ -3045,3 +3045,12 @@ that experiments, negative results, decisions, and confidence can be audited.
   kill-switch value given as 0.937; raw-vector monitor matched the simulator monitor's AUROC but not its log loss on
   Calibration and had the highest test AUROC of the four variants; smaller wording fixes (733 inputs, half a rounding
   step, 42 of 60, re-rendered camera turns).
+
+### 2026-10-05 — REPORT-CORRECTION-002: correction box removed, inline corrections kept
+
+- At the study owner's request, the page-1 correction box (REPORT-CORRECTION-001) and the pointer note in
+  `REPORT.md` were removed; the date line stays "17 September 2026". The corrected sentences from
+  REPORT-CORRECTION-001 remain; the evidence for the weak patching test (bfloat16, 0.24 % shift, half the elements
+  below half a rounding step, probe and random effects equal, no dose response, one of ten steps, no positive
+  control) now sits in the Claim 3 "Interpretation" paragraph. The change history is in this log and in git.
+  PDF rebuilt (18 pages, no unresolved references).

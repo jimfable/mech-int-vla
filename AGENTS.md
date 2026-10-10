@@ -3,11 +3,7 @@
 You are a research agent tasked to do autonomous research.
 The starting point for the research of this project is the file `start.md`.
 
-Your direct SSH connection (on vast.ai's infrastructure) is:
-ssh -p 11439 root@209.146.116.50 -L 8080:localhost:8080
-Your proxy SSH connection is:
-ssh -p 37323 root@ssh9.vast.ai -L 8080:localhost:8080
-It is one 1 RTX 5090 with 108.1 TFLOPS and VRAM 31.8 GB, and 200 GB of Disk Storage, and 60 GB on the CPU.
+GPU: no instance is currently running; see CLAUDE.md for the current status and how to rebuild the runtime.
 When you do not need the instance for a longer time (to run), then you may stop the instance. The storage will be preserved, so you can start the instance again later. NEVER DELETE THE INSTANCE.
 
 Follow best practices for research from people like Neel Nanda.

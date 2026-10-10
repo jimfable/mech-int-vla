@@ -1026,8 +1026,7 @@ that experiments, negative results, decisions, and confidence can be audited.
   action after the prior resource-queue response. Vast accepted it with
   `success=true`; read-only status is now `actual_status=running`,
   `cur_state=running`, `intended_status=running`, and `next_state=running`.
-  Both the confirmed proxy route `ssh -p 37323 root@ssh9.vast.ai` and the direct
-  route are reachable. The RTX 5090 is visible with 2 MiB used and 0% utilization
+  Both the confirmed proxy route and the direct route are reachable. The RTX 5090 is visible with 2 MiB used and 0% utilization
   before work. Running price remains `$0.3437037037/hr`; no stop is appropriate
   while the concrete Calibration job is active.
 - **Remote audit:** Vast's required `/etc/vast-agents-guide.md` was read in
